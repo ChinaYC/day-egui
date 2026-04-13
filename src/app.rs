@@ -1,20 +1,33 @@
+use crate::leetcode::LeetCodeState;
+use crate::todo::TodoState;
+
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy)]
+pub enum AppRoute {
+    LeetCode,
+    Todo,
+}
+
+impl Default for AppRoute {
+    fn default() -> Self {
+        Self::LeetCode
+    }
+}
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
+    route: AppRoute,
+    leetcode_state: LeetCodeState,
+    todo_state: TodoState,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
+            route: AppRoute::default(),
+            leetcode_state: LeetCodeState::default(),
+            todo_state: TodoState::default(),
         }
     }
 }
@@ -24,6 +37,8 @@ impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
+
+        crate::theme::setup_fonts(&cc.egui_ctx);
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
@@ -43,67 +58,62 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
+        // Ensure initial load if not loaded yet
+        if !self.todo_state.initial_loaded {
+            self.todo_state.load_from_file();
+        }
 
-        egui::Panel::top("top_panel").show_inside(ui, |ui| {
-            // The top panel is often a good place for a menu bar:
+        // Sync background tasks and update Todo list
+        if let Some((task_title, source, description)) = self.leetcode_state.sync_background_state() {
+            use crate::todo::TodoItem;
+            
+            if !self.todo_state.has_today_automated_task(&source) {
+                self.todo_state.items.push(TodoItem::new_automated(task_title, source, description));
+                self.todo_state.save_to_file();
+            }
+        }
 
-            egui::MenuBar::new().ui(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ui.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
+        // Apply some styling inspired by Cupertino
+        let mut style = (*ui.ctx().global_style()).clone();
+        style.spacing.item_spacing = egui::vec2(10.0, 10.0);
+        style.spacing.window_margin = egui::Margin::same(12);
+        style.visuals.window_corner_radius = egui::CornerRadius::same(8);
+        ui.ctx().set_global_style(style);
+
+        egui::Panel::left("left_panel")
+            .resizable(false)
+            .exact_size(200.0)
+            .show_inside(ui, |ui| {
+                ui.heading("⚡ 效率工具");
+                ui.add_space(20.0);
+
+                ui.vertical_centered_justified(|ui| {
+                    if ui.selectable_label(self.route == AppRoute::LeetCode, "LeetCode 刷题").clicked() {
+                        self.route = AppRoute::LeetCode;
+                    }
+                    ui.add_space(8.0);
+                    if ui.selectable_label(self.route == AppRoute::Todo, "Todo 清单").clicked() {
+                        self.route = AppRoute::Todo;
+                    }
+                });
+
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("v0.1.0 Offline");
                     });
-                    ui.add_space(16.0);
-                }
-
-                egui::widgets::global_theme_preference_buttons(ui);
+                });
             });
-        });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
-
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
-
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
+            match self.route {
+                AppRoute::LeetCode => {
+                    self.leetcode_state.ui(ui, &self.todo_state);
+                }
+                AppRoute::Todo => {
+                    self.todo_state.ui(ui);
+                }
             }
-
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
-            });
         });
     }
-}
-
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        ui.label("Powered by ");
-        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-        ui.label(" and ");
-        ui.hyperlink_to(
-            "eframe",
-            "https://github.com/emilk/egui/tree/master/crates/eframe",
-        );
-        ui.label(".");
-    });
 }

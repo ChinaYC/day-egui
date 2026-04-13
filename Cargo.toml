@@ -18,10 +18,19 @@ log = "0.4.27"
 
 # You only need serde if you want app persistence:
 serde = { version = "1.0.219", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+font-kit = "0.14.3"
+rfd = "0.17.2"
+serde_json = "1.0.139"
+tempfile = "3.27.0"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+anyhow = "1.0.102"
+dirs = "6.0.0"
 env_logger = "0.11.8"
+headless_chrome = "1.0.21"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

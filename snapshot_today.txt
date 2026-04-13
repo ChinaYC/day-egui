@@ -1,0 +1,4 @@
+uid=3_0 RootWebArea ". - 力扣（LeetCode）" url="https://leetcode.cn/problems/today/"
+  uid=3_1 region "Notifications (F8)"
+    uid=3_2 list
+  uid=3_3 alert atomic live="assertive" relevant="additions text"
