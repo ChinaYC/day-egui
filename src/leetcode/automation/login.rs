@@ -9,6 +9,27 @@ fn add_log(logs: &Arc<Mutex<Vec<String>>>, msg: &str) {
     logs_lock.push(format!("[{}] {}", now, msg));
 }
 
+///等待元素出现
+fn wait_for_element(tab: &Tab, selector: &str,timeout: Duration) -> Result<()> {
+    let start = std::time::Instant::now();
+    loop {
+        if start.elapsed() > timeout {
+            return Err(anyhow::anyhow!("元素未出现 (Element not found)"));
+        }
+
+        // 检查元素是否存在
+       let exists = tab.evaluate(&format!("document.querySelector('{}') !== null", selector), false)?
+            .value
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    
+        if exists {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
 pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_flag: &Arc<std::sync::atomic::AtomicBool>) -> Result<Arc<Tab>> {
     // 智能获取初始标签页，优先寻找空白页 (about:blank) 进行复用，避免多出多余的空窗口
     let tab = {
@@ -34,8 +55,22 @@ pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_fl
     };
     
     add_log(logs, "等待页面加载... (Waiting for page load)");
-    tab.navigate_to("https://leetcode.cn/").map_err(|e: anyhow::Error| e)?;
-    std::thread::sleep(Duration::from_secs(3));
+    // 忽略导航过程中的网络错误，有时候部分资源加载失败会报错但页面其实已经出来了
+    let _ = tab.navigate_to("https://leetcode.cn/");
+    std::thread::sleep(Duration::from_secs(5)); // 给页面留出足够的渲染时间
+
+    // 尝试点击登录按钮，触发登录弹窗或跳转页面
+    let _ = tab.evaluate(
+        r#"
+        (function() {
+            let loginBtn = document.querySelector('a[href*="/accounts/login"]');
+            if (loginBtn) {
+                loginBtn.click();
+            }
+        })();
+        "#,
+        false
+    );
 
     add_log(logs, "检查是否需要登录... (Checking login status)");
     let timeout = Duration::from_secs(300); 
@@ -56,9 +91,16 @@ pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_fl
             let is_logged_in = t.evaluate(
                 r#"
                 (function() {
+                    // 如果存在明确的登录链接，说明未登录
+                    if (document.querySelector('a[href*="/accounts/login"]')) return false;
+                    
                     if (document.cookie.includes('LEETCODE_SESSION')) return true;
-                    let text = document.body.innerText;
-                    if (text.includes('Plus 会员') && !text.includes('登录 / 注册')) return true;
+                    
+                    // 检查页面是否包含用户头像或菜单等已登录标志
+                    if (document.querySelector('nav') && !document.querySelector('a[href*="/accounts/login"]')) {
+                        // 简单判断：没有登录按钮且页面加载完成
+                        return true;
+                    }
                     return false;
                 })();
                 "#,

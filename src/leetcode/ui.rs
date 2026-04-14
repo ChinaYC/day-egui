@@ -5,6 +5,9 @@ use std::sync::atomic::Ordering;
 
 impl LeetCodeState {
     pub fn ui(&mut self, ui: &mut egui::Ui, todo_state: &crate::todo::TodoState) {
+        // 限制打卡开关，方便开发调试使用
+        const ENABLE_CHECKIN_LIMIT: bool = false;
+
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         if self.checkin_date != today && !self.checkin_status.is_empty() {
             self.checkin_status = "待检测".to_string();
@@ -81,11 +84,16 @@ impl LeetCodeState {
                     .min_size(egui::vec2(button_width, 30.0))
                     .sense(egui::Sense::click());
                 
-                let response = ui.add_enabled(!already_checked_in_today, btn);
+                //根据ENABLE_CHECKIN_LIMIT判断是否启用打卡按钮
+                let button_chickin_enabled = if ENABLE_CHECKIN_LIMIT {
+                    !already_checked_in_today
+                } else {
+                    true
+                };
+                let response = ui.add_enabled(button_chickin_enabled, btn);
                 
-                if already_checked_in_today {
+                if ENABLE_CHECKIN_LIMIT&&already_checked_in_today {
                     // 我们只保留手动跟随鼠标的 Fallback Tooltip，移除可能造成重影的默认 hover_text
-                     
                     if response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
                         #[allow(deprecated)]
                         egui::Tooltip::new(response.id.with("fallback"), ui.ctx().clone(), egui::PopupAnchor::Pointer, ui.layer_id())
