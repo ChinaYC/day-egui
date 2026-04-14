@@ -1,17 +1,11 @@
 use anyhow::Result;
 use headless_chrome::Tab;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use std::sync::atomic::AtomicBool;
-use super::daily::{add_log, check_cancel};
+use super::daily::add_log;
 
-pub fn get_daily_problem_url(tab: &Arc<Tab>, logs: &Arc<Mutex<Vec<String>>>, cancel_flag: &Arc<AtomicBool>) -> Result<(String, String, bool, String)> {
-    add_log(logs, "访问 LeetCode 首页...");
-    tab.navigate_to("https://leetcode.cn").map_err(|e| anyhow::anyhow!(e))?;
-    std::thread::sleep(Duration::from_secs(3));
-
-    check_cancel(cancel_flag)?;
-    add_log(logs, "尝试获取每日一题链接及打卡状态...");
+pub fn get_daily_problem_url(tab: &Arc<Tab>, logs: &Arc<Mutex<Vec<String>>>, _cancel_flag: &Arc<AtomicBool>) -> Result<(String, String, bool, String)> {
+    add_log(logs, "在首页尝试获取每日一题链接及打卡状态...");
     
     // 我们提取四个信息：
     // 1. 每日一题的 url

@@ -5,23 +5,21 @@ use std::time::Duration;
 use std::sync::atomic::AtomicBool;
 use super::daily::{add_log, check_cancel};
 
-pub fn submit_code(tab: &Arc<Tab>, problem_url: &str, code: &str, lang: &str, logs: &Arc<Mutex<Vec<String>>>, cancel_flag: &Arc<AtomicBool>) -> Result<()> {
-    add_log(logs, "回到题目页面准备填入代码...");
-    tab.navigate_to(problem_url).map_err(|e| anyhow::anyhow!(e))?;
-    std::thread::sleep(Duration::from_secs(5));
+pub fn submit_code(tab: &Arc<Tab>, code: &str, lang: &str, logs: &Arc<Mutex<Vec<String>>>, cancel_flag: &Arc<AtomicBool>) -> Result<()> {
+    add_log(logs, "在题解页面右侧准备填入代码...");
     
     check_cancel(cancel_flag)?;
-    add_log(logs, &format!("正在切换语言为 {}...", lang));
+    add_log(logs, &format!("正在右侧编辑器切换语言为 {}...", lang));
     tab.evaluate(
         &format!(
             r#"
             (function() {{
                 const targetLang = '{}';
-                // 查找题目页面的代码语言选择器，包含 button 标签或者 class 中带 select/lang 的元素
-                const selectors = document.querySelectorAll('button, div[class*="language-select"], div[class*="select"]');
+                // 查找右侧编辑器上方的语言选择器下拉框，常见特征：具有包含语言名称的按钮或选择器
+                const selectors = document.querySelectorAll('button, div[class*="select"], div[class*="popover"]');
                 for (let sel of selectors) {{
-                    // 如果按钮内容包含了目前语言，比如 C++, Java 等，点击它展开下拉框
-                    if (sel.innerText && (sel.innerText.includes('C++') || sel.innerText.includes('Java') || sel.innerText.includes('Python') || sel.innerText.includes('Rust'))) {{
+                    // 确保这不是左侧的题解标签，左侧的题解标签没有下拉框通常
+                    if (sel.innerText && (sel.innerText.includes('C++') || sel.innerText.includes('Java') || sel.innerText.includes('Python') || sel.innerText.includes('Rust')) && !sel.className.includes('TabBarItem')) {{
                         // 如果已经是目标语言，直接返回
                         if (sel.innerText.trim() === targetLang) {{
                             return true;
@@ -29,7 +27,7 @@ pub fn submit_code(tab: &Arc<Tab>, problem_url: &str, code: &str, lang: &str, lo
                         
                         sel.click();
                         setTimeout(() => {{
-                            const options = document.querySelectorAll('div[role="option"], li');
+                            const options = document.querySelectorAll('div[role="option"], li, div[class*="item"]');
                             for (let opt of options) {{
                                 if (opt.innerText && opt.innerText.trim() === targetLang) {{
                                     opt.click();

@@ -88,14 +88,14 @@ pub fn run_daily_flow(
     let (code, lang) = extract_solution_code(&active_tab, &problem_url, &logs, &cancel_flag)?;
 
     check_cancel(&cancel_flag)?;
-    // 4. 回到题目页面填入代码并提交
-    submit_code(&active_tab, &problem_url, &code, &lang, &logs, &cancel_flag)?;
+    // 4. 直接在题解页面右侧编辑器填入代码并提交
+    submit_code(&active_tab, &code, &lang, &logs, &cancel_flag)?;
 
-    let mut final_status = "今日已打卡".to_string();
+    let mut final_status = format!("今日已打卡 ({})", lang);
     if !consecutive_days.is_empty() {
         // 如果是刚刚打卡成功，连续天数可能增加了 1，这里只是简单展示，为了严谨可以不显示天数，
         // 或者简单追加之前获取的天数。这里我们保留天数显示，如果需要精确可再次抓取。
-        final_status = format!("今日已打卡 (连续 {} 天)", consecutive_days);
+        final_status = format!("今日已打卡 ({}) (连续 {} 天)", lang, consecutive_days);
     }
     *checkin_status_ref.lock().unwrap() = final_status;
 

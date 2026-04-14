@@ -55,7 +55,8 @@ pub fn extract_solution_code(tab: &Arc<Tab>, problem_url: &str, logs: &Arc<Mutex
     let detected_lang_eval = tab.evaluate(
         r#"
         (function() {
-            const tabs = document.querySelectorAll('div, span, button');
+            // 题解区的语言标签通常具有 TabBarItem_item 或者 tab 相关的 class
+            const tabs = document.querySelectorAll('div[class*="TabBarItem_item"], div[class*="tab"], span[class*="tab"], div.cursor-pointer');
             
             // 优先寻找 Rust
             for (let t of tabs) {

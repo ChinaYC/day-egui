@@ -80,6 +80,18 @@ impl eframe::App for TemplateApp {
         style.visuals.window_corner_radius = egui::CornerRadius::same(8);
         ui.ctx().set_global_style(style);
 
+        // 开启 egui 开发者调试面板（悬浮在右侧独立窗口）
+        #[allow(deprecated)]
+        egui::Window::new("🛠 调试面板 (Debugger)")
+            .default_pos([ui.ctx().screen_rect().width() - 350.0, 20.0])
+            .default_size([300.0, 500.0])
+            .vscroll(true)
+            .open(&mut true)
+            .show(ui.ctx(), |ui| {
+                ui.ctx().clone().inspection_ui(ui);
+            });
+
+
         egui::Panel::left("left_panel")
             .resizable(false)
             .exact_size(200.0)

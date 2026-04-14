@@ -1,5 +1,4 @@
-fn main() {
-    let mut path = dirs::home_dir().unwrap();
-    path.push(".leetcode_automation");
-    println!("{:?}", path);
+use egui::Button;
+fn test() {
+    let _ = Button::new("").min_size(egui::vec2(100.0, 30.0));
 }

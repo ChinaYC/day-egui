@@ -64,20 +64,38 @@ impl LeetCodeState {
         ui.add_space(16.0);
         ui.horizontal(|ui| {
             let is_running = *self.is_running.lock().unwrap_or_else(|e| e.into_inner());
+            let button_width = ui.available_width() * 0.4;
             
-             if  is_running{
-    
-                if ui.button(egui::RichText::new("⏹ 停止 (Stop)").size(16.0).color(egui::Color32::RED)).clicked() {
+            if is_running {
+                let btn = egui::Button::new(egui::RichText::new("⏹ 停止 (Stop)").size(16.0).color(egui::Color32::RED))
+                    .min_size(egui::vec2(button_width, 30.0));
+                    
+                if ui.add(btn).clicked() {
                     self.cancel_flag.store(true, Ordering::Relaxed);
                     let mut logs = self.logs.lock().unwrap();
                     let now = chrono::Local::now().format("%H:%M:%S").to_string();
                     logs.push(format!("[{}] 正在尝试停止... (Stopping...)", now));
                 }
-           
-
-        }else {
-                ui.add_enabled_ui(!already_checked_in_today, |ui| {
-                    if ui.button(egui::RichText::new("🚀 开始打卡 (Start Check-in)").size(16.0)).clicked() {
+            } else {
+                let btn = egui::Button::new(egui::RichText::new("🚀 开始打卡 (Start Check-in)").size(16.0))
+                    .min_size(egui::vec2(button_width, 30.0))
+                    .sense(egui::Sense::click());
+                
+                let response = ui.add_enabled(!already_checked_in_today, btn);
+                
+                if already_checked_in_today {
+                    // 我们只保留手动跟随鼠标的 Fallback Tooltip，移除可能造成重影的默认 hover_text
+                     
+                    if response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
+                        #[allow(deprecated)]
+                        egui::Tooltip::new(response.id.with("fallback"), ui.ctx().clone(), egui::PopupAnchor::Pointer, ui.layer_id())
+                            .show(|ui| {
+                                ui.label("今日已完成打卡，请明天再来 (Today's check-in is already completed)");
+                            });
+                    }
+                }
+                
+                if response.clicked() {
                         self.cancel_flag.store(false, Ordering::Relaxed);
                         let is_running_clone = Arc::clone(&self.is_running);
                         let logs_clone = Arc::clone(&self.logs);
@@ -160,10 +178,20 @@ impl LeetCodeState {
                             *is_running_clone.lock().unwrap() = false;
                         }
                     }
-                });
-          
-        }
-            if ui.button("📋 复制答案 (Copy Answer)").clicked() {
+            }
+            
+            let copy_btn = egui::Button::new("📋 复制答案 (Copy Answer)").min_size(egui::vec2(200.0, 30.0)).sense(egui::Sense::click());
+            let copy_response = ui.add(copy_btn);
+            
+            if copy_response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
+                #[allow(deprecated)]
+                egui::Tooltip::new(copy_response.id.with("fallback"), ui.ctx().clone(), egui::PopupAnchor::Pointer, ui.layer_id())
+                    .show(|ui| {
+                        ui.label("点击将代码复制到剪贴板 (Click to copy code to clipboard)");
+                    });
+            }
+
+            if copy_response.clicked() {
                 let code = self.solution_code.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 ui.ctx().copy_text(code);
             }
