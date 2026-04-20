@@ -28,6 +28,49 @@ A lightweight, local-first productivity application built with Rust and `egui` (
 cargo run --release
 ```
 
+## 📦 How to Build macOS App / 如何打包 macOS 应用
+
+You can build and package the project into a macOS `.app` bundle by running the following commands:
+您可以通过运行以下命令将项目打包成 macOS 的 `.app` 应用程序包：
+
+```bash
+# 1. Build the release binary / 编译发布版本
+cargo build --release
+
+# 2. Create the app bundle structure / 创建应用包结构
+APP_NAME="EfficiencyTool"
+APP_DIR="$HOME/Downloads/$APP_NAME.app"
+mkdir -p "$APP_DIR/Contents/MacOS"
+mkdir -p "$APP_DIR/Contents/Resources"
+
+# 3. Copy the binary to the app bundle / 复制二进制文件到应用包
+cp target/release/eframe_template "$APP_DIR/Contents/MacOS/$APP_NAME"
+
+# 4. Create Info.plist / 创建 Info.plist 配置文件
+cat > "$APP_DIR/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>$APP_NAME</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.liam.efficiencytool</string>
+    <key>CFBundleName</key>
+    <string>$APP_NAME</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.11</string>
+</dict>
+</plist>
+EOF
+
+echo "App successfully built at / 应用程序打包成功，路径为: $APP_DIR"
+```
+
 ## 🛠 Future Roadmap / 后续优化预留
 
 1. **API Integration / 接口集成**: Add HTTP client to fetch daily questions from LeetCode and submit code automatically. (增加 HTTP 请求模块，实现自动获取每日一题及自动提交)。
