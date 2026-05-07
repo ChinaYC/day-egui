@@ -53,12 +53,15 @@ pub struct TodoState {
     pub save_folder: Option<String>,
     
     #[serde(skip)]
+    // 删除二次确认：存放“待确认删除”的任务 id（用 Uuid 绑定具体条目，避免列表排序/增删导致误删）
     pub item_to_delete: Option<Uuid>,
 
     #[serde(skip)]
+    // 拖拽排序：当前正在拖拽的任务 id
     pub dragging_item: Option<Uuid>,
 
     #[serde(skip)]
+    // 拖拽排序：目标插入位置（语义是“插入到这个 index 之前/之后”，由 UI 计算得出）
     pub drag_target_index: Option<usize>,
     
     #[serde(skip)]

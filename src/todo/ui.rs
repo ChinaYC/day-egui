@@ -3,6 +3,8 @@ use super::state::{TodoItem, TodoState};
 impl TodoState {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let mut state_changed = false;
+        // egui 的常见写法：用局部变量收集“本帧 UI 事件”，循环结束后再统一修改 self.items。
+        // 这样可以避免在 iter_mut() 遍历时直接对 Vec 做结构性修改（remove/insert）。
         let mut delete_confirmed: Option<uuid::Uuid> = None;
         let mut reorder_request: Option<(uuid::Uuid, usize)> = None;
         if self.dragging_item.is_none() {
@@ -94,11 +96,14 @@ impl TodoState {
                                         .size(14.0)
                                         .color(egui::Color32::GRAY),
                                 )
+                                // Sense::click_and_drag() 表示这个控件既能点击也能拖拽，
+                                // 返回的 Response 会提供 drag_started/dragged/drag_stopped 等 API。
                                 .sense(egui::Sense::click_and_drag()),
                             ),
                         );
 
                         if let Some(drag_handle_response) = &drag_handle_response {
+                            // drag_started(): 本帧从“未拖拽”变为“开始拖拽”的那一刻（只会为 true 一帧）
                             if drag_handle_response.drag_started() {
                                 self.dragging_item = Some(item_id);
                                 self.drag_target_index = Some(index);
@@ -132,14 +137,19 @@ impl TodoState {
                                     self.item_to_delete = None;
                                 }
                             } else if ui.button("🗑️").clicked() {
+                                // 二次确认：第一次点🗑️只进入“待确认”状态，不会立刻删除。
                                 self.item_to_delete = Some(item_id);
                             }
                             ui.label(egui::RichText::new(&item.created_at).size(10.0).color(egui::Color32::GRAY));
                         });
                     }).response;
 
+                    // contains_pointer()：即使另一个控件正在被拖拽，hovered() 可能为 false；
+                    // 对拖拽目标判定更适合用 contains_pointer()。
                     if self.dragging_item.is_some() && row_response.contains_pointer() {
                         if let Some(pointer_pos) = ui.ctx().pointer_hover_pos() {
+                            // 这里用鼠标在 row 的上半部/下半部，决定插入到当前 index 之前还是之后，
+                            // 最终把它表达成“目标插入索引”。
                             let insert_index = if pointer_pos.y > row_response.rect.center().y {
                                 index.saturating_add(1)
                             } else {
@@ -152,6 +162,7 @@ impl TodoState {
                     }
 
                     if let Some(drag_handle_response) = &drag_handle_response {
+                        // drag_stopped(): 拖拽结束的那一帧（只会为 true 一帧），适合在这里提交重排请求。
                         if self.dragging_item == Some(item_id) && drag_handle_response.drag_stopped() {
                             if let Some(target_index) = self.drag_target_index {
                                 reorder_request = Some((item_id, target_index));
@@ -182,6 +193,9 @@ impl TodoState {
 
         if let Some((dragged_id, target_index)) = reorder_request {
             if let Some(from_index) = self.items.iter().position(|i| i.id == dragged_id) {
+                // 典型的 Vec 重排模式：先 remove 再 insert。
+                // 注意：target_index 是“插入点”，当 from_index < target_index 时 remove 会让后续索引左移，
+                // 所以要对 to_index 做一次 -1 修正。
                 let mut to_index = target_index.min(self.items.len());
                 if to_index > from_index {
                     to_index = to_index.saturating_sub(1);
