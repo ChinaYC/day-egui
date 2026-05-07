@@ -68,7 +68,11 @@ impl eframe::App for TemplateApp {
             use crate::todo::TodoItem;
             
             if !self.todo_state.has_today_automated_task(&source) {
-                self.todo_state.items.push(TodoItem::new_automated(task_title, source, description));
+                // 自动任务落到哪个分区由 Todo 设置控制；默认是“自动 (Auto)”分区。
+                let section_id = Some(self.todo_state.automated_target_section_id());
+                self.todo_state
+                    .items
+                    .push(TodoItem::new_automated(task_title, source, description, section_id));
                 self.todo_state.save_to_file();
             }
         }
