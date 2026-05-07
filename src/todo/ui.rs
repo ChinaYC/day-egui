@@ -3,6 +3,7 @@ use super::state::{TodoItem, TodoState};
 impl TodoState {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let mut state_changed = false;
+        let mut delete_confirmed: Option<usize> = None;
         
         ui.heading("日常 Todo 清单 (Daily Todo List)");
 
@@ -97,7 +98,15 @@ impl TodoState {
                         }
                         
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("🗑️").clicked() {
+                            if self.item_to_delete == Some(index) {
+                                if ui.button("取消 (Cancel)").clicked() {
+                                    self.item_to_delete = None;
+                                }
+                                if ui.button("删除 (Delete)").clicked() {
+                                    delete_confirmed = Some(index);
+                                    self.item_to_delete = None;
+                                }
+                            } else if ui.button("🗑️").clicked() {
                                 self.item_to_delete = Some(index);
                             }
                             ui.label(egui::RichText::new(&item.created_at).size(10.0).color(egui::Color32::GRAY));
@@ -115,36 +124,11 @@ impl TodoState {
                 });
             }
         });
-        
-        // 删除二次确认弹窗
-        if let Some(index) = self.item_to_delete {
-            let mut is_open = true;
-            let item_title = self.items.get(index).map(|i| i.title.clone()).unwrap_or_default();
-            
-            egui::Window::new("确认删除 (Confirm Deletion)")
-                .collapsible(false)
-                .resizable(false)
-                .open(&mut is_open)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ui.ctx(), |ui| {
-                    ui.label(format!("确定要删除任务 \"{}\" 吗？\n(Are you sure you want to delete this task?)", item_title));
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("取消 (Cancel)").clicked() {
-                            self.item_to_delete = None;
-                        }
-                        if ui.button("确定 (Confirm)").clicked() {
-                            if index < self.items.len() {
-                                self.items.remove(index);
-                                state_changed = true;
-                            }
-                            self.item_to_delete = None;
-                        }
-                    });
-                });
-                
-            if !is_open {
-                self.item_to_delete = None;
+
+        if let Some(index) = delete_confirmed {
+            if index < self.items.len() {
+                self.items.remove(index);
+                state_changed = true;
             }
         }
         
