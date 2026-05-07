@@ -53,7 +53,13 @@ pub struct TodoState {
     pub save_folder: Option<String>,
     
     #[serde(skip)]
-    pub item_to_delete: Option<usize>,
+    pub item_to_delete: Option<Uuid>,
+
+    #[serde(skip)]
+    pub dragging_item: Option<Uuid>,
+
+    #[serde(skip)]
+    pub drag_target_index: Option<usize>,
     
     #[serde(skip)]
     pub initial_loaded: bool,

@@ -3,7 +3,11 @@ use super::state::{TodoItem, TodoState};
 impl TodoState {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let mut state_changed = false;
-        let mut delete_confirmed: Option<usize> = None;
+        let mut delete_confirmed: Option<uuid::Uuid> = None;
+        let mut reorder_request: Option<(uuid::Uuid, usize)> = None;
+        if self.dragging_item.is_none() {
+            self.drag_target_index = None;
+        }
         
         ui.heading("日常 Todo 清单 (Daily Todo List)");
 
@@ -79,8 +83,29 @@ impl TodoState {
         
         egui::ScrollArea::vertical().id_salt("todo_list_scroll").show(ui, |ui| {
             for (index, item) in self.items.iter_mut().enumerate() {
+                let item_id = item.id;
+                let mut drag_handle_response: Option<egui::Response> = None;
                 ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
+                    let row_response = ui.horizontal(|ui| {
+                        drag_handle_response = Some(
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new("≡")
+                                        .size(14.0)
+                                        .color(egui::Color32::GRAY),
+                                )
+                                .sense(egui::Sense::click_and_drag()),
+                            ),
+                        );
+
+                        if let Some(drag_handle_response) = &drag_handle_response {
+                            if drag_handle_response.drag_started() {
+                                self.dragging_item = Some(item_id);
+                                self.drag_target_index = Some(index);
+                                self.item_to_delete = None;
+                            }
+                        }
+
                         if ui.checkbox(&mut item.completed, "").changed() {
                             state_changed = true;
                         }
@@ -98,20 +123,43 @@ impl TodoState {
                         }
                         
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if self.item_to_delete == Some(index) {
+                            if self.item_to_delete == Some(item_id) {
                                 if ui.button("取消 (Cancel)").clicked() {
                                     self.item_to_delete = None;
                                 }
                                 if ui.button("删除 (Delete)").clicked() {
-                                    delete_confirmed = Some(index);
+                                    delete_confirmed = Some(item_id);
                                     self.item_to_delete = None;
                                 }
                             } else if ui.button("🗑️").clicked() {
-                                self.item_to_delete = Some(index);
+                                self.item_to_delete = Some(item_id);
                             }
                             ui.label(egui::RichText::new(&item.created_at).size(10.0).color(egui::Color32::GRAY));
                         });
-                    });
+                    }).response;
+
+                    if self.dragging_item.is_some() && row_response.contains_pointer() {
+                        if let Some(pointer_pos) = ui.ctx().pointer_hover_pos() {
+                            let insert_index = if pointer_pos.y > row_response.rect.center().y {
+                                index.saturating_add(1)
+                            } else {
+                                index
+                            };
+                            self.drag_target_index = Some(insert_index);
+                        } else {
+                            self.drag_target_index = Some(index);
+                        }
+                    }
+
+                    if let Some(drag_handle_response) = &drag_handle_response {
+                        if self.dragging_item == Some(item_id) && drag_handle_response.drag_stopped() {
+                            if let Some(target_index) = self.drag_target_index {
+                                reorder_request = Some((item_id, target_index));
+                            }
+                            self.dragging_item = None;
+                            self.drag_target_index = None;
+                        }
+                    }
                     
                     if let Some(desc) = &item.description {
                         if !desc.is_empty() {
@@ -126,9 +174,23 @@ impl TodoState {
         });
 
         if let Some(index) = delete_confirmed {
-            if index < self.items.len() {
-                self.items.remove(index);
+            if let Some(pos) = self.items.iter().position(|i| i.id == index) {
+                self.items.remove(pos);
                 state_changed = true;
+            }
+        }
+
+        if let Some((dragged_id, target_index)) = reorder_request {
+            if let Some(from_index) = self.items.iter().position(|i| i.id == dragged_id) {
+                let mut to_index = target_index.min(self.items.len());
+                if to_index > from_index {
+                    to_index = to_index.saturating_sub(1);
+                }
+                if from_index != to_index && to_index <= self.items.len().saturating_sub(1) {
+                    let item = self.items.remove(from_index);
+                    self.items.insert(to_index, item);
+                    state_changed = true;
+                }
             }
         }
         
