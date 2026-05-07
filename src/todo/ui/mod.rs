@@ -1,0 +1,107 @@
+mod header;
+mod list;
+mod reminder;
+mod sections;
+mod settings;
+
+use super::TodoState;
+
+impl TodoState {
+    pub fn ui(&mut self, ui: &mut egui::Ui) {
+        self.ensure_builtin_sections_and_settings();
+        self.migrate_items_without_section();
+
+        let mut state_changed = false;
+
+        header::show(self, ui, &mut state_changed);
+        sections::show(self, ui);
+
+        let events = list::show(self, ui, &mut state_changed);
+
+        if let Some(item_id) = events.open_reminder_for {
+            if self.editing_reminder != Some(item_id) {
+                self.editing_reminder = Some(item_id);
+                self.reminder_input = self
+                    .items
+                    .iter()
+                    .find(|i| i.id == item_id)
+                    .and_then(|i| i.reminder_at_local_string())
+                    .unwrap_or_default();
+            }
+        }
+
+        if let Some(item_id) = events.delete_confirmed {
+            if let Some(pos) = self.items.iter().position(|i| i.id == item_id) {
+                self.items.remove(pos);
+                state_changed = true;
+            }
+        }
+
+        if let Some((dragged_id, section_id, target_index)) = events.reorder_request {
+            if reorder_item_in_section(self, dragged_id, section_id, target_index) {
+                state_changed = true;
+            }
+        }
+
+        reminder::show(self, ui, &mut state_changed);
+        settings::show(self, ui, &mut state_changed);
+
+        if state_changed {
+            self.save_to_file();
+        }
+    }
+}
+
+fn reorder_item_in_section(
+    state: &mut TodoState,
+    dragged_id: uuid::Uuid,
+    section_id: uuid::Uuid,
+    target_index: usize,
+) -> bool {
+    let from_index = match state.items.iter().position(|i| i.id == dragged_id) {
+        Some(i) => i,
+        None => return false,
+    };
+
+    if state.items.get(from_index).and_then(|i| i.section_id) != Some(section_id) {
+        return false;
+    }
+
+    let indices_before: Vec<usize> = state
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(i, it)| (it.section_id == Some(section_id)).then_some(i))
+        .collect();
+    let from_pos = match indices_before.iter().position(|&i| i == from_index) {
+        Some(p) => p,
+        None => return false,
+    };
+
+    let mut target_pos = target_index.min(indices_before.len());
+    if target_pos > from_pos {
+        target_pos = target_pos.saturating_sub(1);
+    }
+
+    let item = state.items.remove(from_index);
+
+    let indices_after: Vec<usize> = state
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(i, it)| (it.section_id == Some(section_id)).then_some(i))
+        .collect();
+
+    let insert_global_index = if indices_after.is_empty() {
+        state.items.len()
+    } else if target_pos >= indices_after.len() {
+        indices_after.last().copied().unwrap_or(state.items.len()) + 1
+    } else {
+        indices_after[target_pos]
+    };
+
+    let insert_global_index = insert_global_index.min(state.items.len());
+    state.items.insert(insert_global_index, item);
+    true
+}
+

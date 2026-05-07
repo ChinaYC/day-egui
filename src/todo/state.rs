@@ -1,95 +1,7 @@
-use chrono::Local;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TodoItem {
-    pub id: Uuid,
-    pub title: String,
-    pub completed: bool,
-    pub created_at: String,
-    // 任务所属分区（分区本身在 TodoState.sections 里定义）
-    // 用 Option 兼容旧版本数据：旧文件里没有这个字段时会走默认值 None，再在加载后做迁移补全。
-    #[serde(default)]
-    pub section_id: Option<Uuid>,
-    #[serde(default)]
-    pub is_automated: bool,
-    #[serde(default)]
-    pub automated_source: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-impl TodoItem {
-    pub fn new(title: String, description: Option<String>, section_id: Option<Uuid>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            title,
-            completed: false,
-            created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-            section_id,
-            is_automated: false,
-            automated_source: None,
-            description,
-        }
-    }
-
-    pub fn new_automated(
-        title: String,
-        source: String,
-        description: Option<String>,
-        section_id: Option<Uuid>,
-    ) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            title,
-            completed: true,
-            created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-            section_id,
-            is_automated: true,
-            automated_source: Some(source),
-            description,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TodoSection {
-    pub id: Uuid,
-    pub name: String,
-}
-
-impl TodoSection {
-    pub fn new(name: String) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            name,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(default)]
-pub struct TodoSettings {
-    // 自动任务默认落到哪个分区（齿轮设置里可改）
-    pub automated_section_id: Option<Uuid>,
-}
-
-impl Default for TodoSettings {
-    fn default() -> Self {
-        Self {
-            automated_section_id: None,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Default)]
-#[serde(default)]
-struct TodoStorage {
-    items: Vec<TodoItem>,
-    sections: Vec<TodoSection>,
-    settings: TodoSettings,
-}
+use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
@@ -99,45 +11,34 @@ pub struct TodoState {
     pub settings: TodoSettings,
     pub new_task_title: String,
     pub new_task_description: String,
-    
-    // 自定义保存路径
+
     pub save_folder: Option<String>,
-    
+
     #[serde(skip)]
-    // 删除二次确认：存放“待确认删除”的任务 id（用 Uuid 绑定具体条目，避免列表排序/增删导致误删）
     pub item_to_delete: Option<Uuid>,
-
     #[serde(skip)]
-    // 拖拽排序：当前正在拖拽的任务 id
     pub dragging_item: Option<Uuid>,
-
     #[serde(skip)]
-    // 拖拽排序：当前拖拽发生在哪个分区里（用于 All 视图里分区隔离排序）
     pub dragging_section: Option<Uuid>,
-
     #[serde(skip)]
-    // 拖拽排序：目标插入位置（语义是“插入到这个 index 之前/之后”，由 UI 计算得出）
     pub drag_target_index: Option<usize>,
 
     #[serde(skip)]
-    // UI：当前选中的分区；None 表示“全部”
     pub active_section: Option<Uuid>,
-
     #[serde(skip)]
-    // UI：新建分区的输入框内容
     pub new_section_name: String,
-
     #[serde(skip)]
-    // UI：新增任务时选择的目标分区
     pub new_task_section: Option<Uuid>,
+    #[serde(skip)]
+    pub show_settings: bool,
 
     #[serde(skip)]
-    // UI：是否打开设置窗口（由左下角齿轮按钮控制）
-    pub show_settings: bool,
-    
+    pub editing_reminder: Option<Uuid>,
+    #[serde(skip)]
+    pub reminder_input: String,
+
     #[serde(skip)]
     pub initial_loaded: bool,
-    
     #[serde(skip)]
     pub error_msg: Option<String>,
 }
@@ -159,6 +60,8 @@ impl Default for TodoState {
             new_section_name: String::new(),
             new_task_section: None,
             show_settings: false,
+            editing_reminder: None,
+            reminder_input: String::new(),
             initial_loaded: false,
             error_msg: None,
         };
@@ -168,7 +71,6 @@ impl Default for TodoState {
 }
 
 impl TodoState {
-    // 内置分区：满足“自动/手动/全部”的需求，其中“全部”是视图，不落盘为分区。
     pub fn ensure_builtin_sections_and_settings(&mut self) {
         let auto_id = self.get_or_create_section_id_by_name("自动 (Auto)");
         let manual_id = self.get_or_create_section_id_by_name("手动 (Manual)");
@@ -215,7 +117,6 @@ impl TodoState {
             .unwrap_or_else(|| self.get_or_create_section_id_by_name("自动 (Auto)"))
     }
 
-    // 兼容旧数据：如果 item.section_id 缺失，就按 is_automated 自动归类到内置分区。
     pub fn migrate_items_without_section(&mut self) {
         let auto_id = self.get_or_create_section_id_by_name("自动 (Auto)");
         let manual_id = self.get_or_create_section_id_by_name("手动 (Manual)");
@@ -228,7 +129,13 @@ impl TodoState {
     }
 
     pub fn get_save_path(&self) -> Option<std::path::PathBuf> {
-        self.save_folder.as_ref().map(|f| std::path::Path::new(f).join("todos.json"))
+        self.save_folder
+            .as_ref()
+            .map(|f| std::path::Path::new(f).join("todos.json"))
+    }
+
+    pub fn get_save_folder_path(&self) -> Option<std::path::PathBuf> {
+        self.save_folder.as_ref().map(|f| std::path::PathBuf::from(f))
     }
 
     pub fn load_from_file(&mut self) {
@@ -242,10 +149,13 @@ impl TodoState {
                     } else if let Ok(items) = serde_json::from_str::<Vec<TodoItem>>(&content) {
                         self.items = items;
                     } else {
-                        self.error_msg = Some("无法解析本地数据文件 (Failed to parse local data file)".to_string());
+                        self.error_msg = Some(
+                            "无法解析本地数据文件 (Failed to parse local data file)".to_string(),
+                        );
                     }
                 } else {
-                    self.error_msg = Some("无法读取本地数据文件 (Failed to read local data file)".to_string());
+                    self.error_msg =
+                        Some("无法读取本地数据文件 (Failed to read local data file)".to_string());
                 }
             }
         }
@@ -261,24 +171,39 @@ impl TodoState {
                 sections: self.sections.clone(),
                 settings: self.settings.clone(),
             };
+
             if let Ok(content) = serde_json::to_string_pretty(&storage) {
-                if let Err(e) = std::fs::write(path, content) {
+                if let Err(e) = std::fs::write(&path, content) {
                     println!("Failed to save todo items: {}", e);
                 }
             }
         }
+        super::reminders::write_reminders_ics(self);
+    }
+
+    pub fn poll_reminders_and_persist_if_needed(&mut self) {
+        if super::reminders::poll_due_reminders_and_notify(self) {
+            self.save_to_file();
+        }
     }
 
     pub fn get_today_automated_count(&self) -> usize {
-        let today = Local::now().format("%Y-%m-%d").to_string();
-        self.items.iter()
-            .filter(|item| item.is_automated && item.completed && item.created_at.starts_with(&today))
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.items
+            .iter()
+            .filter(|item| {
+                item.is_automated && item.completed && item.created_at.starts_with(&today)
+            })
             .count()
     }
 
     pub fn has_today_automated_task(&self, source: &str) -> bool {
-        let today = Local::now().format("%Y-%m-%d").to_string();
-        self.items.iter()
-            .any(|item| item.is_automated && item.completed && item.created_at.starts_with(&today) && item.automated_source.as_deref() == Some(source))
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.items.iter().any(|item| {
+            item.is_automated
+                && item.completed
+                && item.created_at.starts_with(&today)
+                && item.automated_source.as_deref() == Some(source)
+        })
     }
 }
