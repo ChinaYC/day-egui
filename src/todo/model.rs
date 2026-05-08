@@ -90,14 +90,22 @@ impl TodoSection {
 pub struct TodoSettings {
     // 自动任务默认落到哪个分区（齿轮设置里可改）
     pub automated_section_id: Option<Uuid>,
+    // 字体大小倍率（1.0 = 默认），用于提升可读性。
+    #[serde(default = "default_font_scale")]
+    pub font_scale: f32,
 }
 
 impl Default for TodoSettings {
     fn default() -> Self {
         Self {
             automated_section_id: None,
+            font_scale: default_font_scale(),
         }
     }
+}
+
+fn default_font_scale() -> f32 {
+    1.0
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -107,4 +115,3 @@ pub struct TodoStorage {
     pub sections: Vec<TodoSection>,
     pub settings: TodoSettings,
 }
-

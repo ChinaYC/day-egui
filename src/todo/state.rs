@@ -36,6 +36,22 @@ pub struct TodoState {
     pub editing_reminder: Option<Uuid>,
     #[serde(skip)]
     pub reminder_input: String,
+    #[serde(skip)]
+    pub reminder_error_msg: Option<String>,
+
+    #[serde(skip)]
+    pub section_to_rename: Option<Uuid>,
+    #[serde(skip)]
+    pub section_rename_input: String,
+    #[serde(skip)]
+    pub section_to_delete: Option<Uuid>,
+    #[serde(skip)]
+    pub section_delete_move_to: Option<Uuid>,
+    #[serde(skip)]
+    pub section_manage_error_msg: Option<String>,
+
+    #[serde(skip)]
+    pub last_font_scale: f32,
 
     #[serde(skip)]
     pub initial_loaded: bool,
@@ -62,6 +78,13 @@ impl Default for TodoState {
             show_settings: false,
             editing_reminder: None,
             reminder_input: String::new(),
+            reminder_error_msg: None,
+            section_to_rename: None,
+            section_rename_input: String::new(),
+            section_to_delete: None,
+            section_delete_move_to: None,
+            section_manage_error_msg: None,
+            last_font_scale: 1.0,
             initial_loaded: false,
             error_msg: None,
         };

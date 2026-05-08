@@ -75,6 +75,13 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 }
 
                                 if ui.checkbox(&mut item.completed, "").changed() {
+                                    if item.completed {
+                                        // UX：任务完成后默认不再提醒，避免“做完了还弹通知”。
+                                        item.reminder_sent = true;
+                                    } else if item.reminder_at.is_some() {
+                                        // UX：如果把任务从完成改回未完成，之前设置的提醒重新生效。
+                                        item.reminder_sent = false;
+                                    }
                                     *state_changed = true;
                                 }
 
@@ -113,6 +120,15 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                         if ui.button("⏰").clicked() {
                                             open_reminder_for = Some(item_id);
                                         }
+                                        ui.menu_button("📁", |ui| {
+                                            for section in &state.sections {
+                                                if ui.button(section.name.clone()).clicked() {
+                                                    item.section_id = Some(section.id);
+                                                    *state_changed = true;
+                                                    ui.close();
+                                                }
+                                            }
+                                        });
                                         if let Some(reminder_text) = item.reminder_at_local_string()
                                         {
                                             ui.label(
@@ -190,4 +206,3 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         open_reminder_for,
     }
 }
-

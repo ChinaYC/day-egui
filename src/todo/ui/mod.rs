@@ -21,6 +21,7 @@ impl TodoState {
         if let Some(item_id) = events.open_reminder_for {
             if self.editing_reminder != Some(item_id) {
                 self.editing_reminder = Some(item_id);
+                self.reminder_error_msg = None;
                 self.reminder_input = self
                     .items
                     .iter()
@@ -104,4 +105,3 @@ fn reorder_item_in_section(
     state.items.insert(insert_global_index, item);
     true
 }
-

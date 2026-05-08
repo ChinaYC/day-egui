@@ -87,6 +87,18 @@ impl eframe::App for TemplateApp {
         style.spacing.item_spacing = egui::vec2(10.0, 10.0);
         style.spacing.window_margin = egui::Margin::same(12);
         style.visuals.window_corner_radius = egui::CornerRadius::same(8);
+
+        let font_scale = self.todo_state.settings.font_scale;
+        if font_scale.is_finite() && font_scale > 0.0 {
+            let ratio = font_scale / self.todo_state.last_font_scale.max(0.01);
+            if (ratio - 1.0).abs() > f32::EPSILON {
+                for font_id in style.text_styles.values_mut() {
+                    font_id.size *= ratio;
+                }
+                self.todo_state.last_font_scale = font_scale;
+            }
+        }
+
         ui.ctx().set_global_style(style);
 
         // 开启 egui 开发者调试面板（悬浮在右侧独立窗口）
