@@ -1,63 +1,9 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TodoItem {
-    pub id: Uuid,
-    pub title: String,
-    pub completed: bool,
-    pub created_at: String,
-    #[serde(default)]
-    pub is_automated: bool,
-    #[serde(default)]
-    pub automated_source: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub category: Option<String>,
-    #[serde(default)]
-    pub reminder_time: Option<String>,
-    #[serde(default)]
-    pub is_deleted: bool,
-    #[serde(default)]
-    pub tags: Vec<String>,
-}
+use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
 
-impl TodoItem {
-    pub fn new(title: String, description: Option<String>, category: Option<String>, reminder_time: Option<String>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            title,
-            completed: false,
-            created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-            is_automated: false,
-            automated_source: None,
-            description,
-            category,
-            reminder_time,
-            is_deleted: false,
-            tags: Vec::new(),
-        }
-    }
-
-    pub fn new_automated(title: String, source: String, description: Option<String>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            title,
-            completed: false,
-            created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-            is_automated: true,
-            automated_source: Some(source),
-            description,
-            category: Some("Automated".to_string()),
-            reminder_time: None,
-            is_deleted: false,
-            tags: Vec::new(),
-        }
-    }
-}
-
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct TodoState {
     pub items: Vec<TodoItem>,
@@ -65,17 +11,7 @@ pub struct TodoState {
     pub settings: TodoSettings,
     pub new_task_title: String,
     pub new_task_description: String,
-    pub new_task_category: String,
-    pub new_task_reminder: String,
-    pub new_task_tags: String,
-    
-    // 过滤分类
-    pub filter_category: Option<String>,
-    
-    // 过滤标签
-    pub filter_tag: Option<String>,
-    
-    // 自定义保存路径
+
     pub save_folder: Option<String>,
 
     #[serde(skip)]
@@ -192,14 +128,26 @@ impl TodoState {
         }
     }
 
-    pub fn get_save_path(&self) -> Option<std::path::PathBuf> {
-        self.save_folder
-            .as_ref()
-            .map(|f| std::path::Path::new(f).join("todos.json"))
+    pub fn get_save_folder_path(&self) -> Option<std::path::PathBuf> {
+        if let Some(folder) = &self.save_folder {
+            return Some(std::path::PathBuf::from(folder));
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let base = dirs::data_local_dir().or_else(dirs::config_dir)?;
+            return Some(base.join("eframe_template").join("todo"));
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            None
+        }
     }
 
-    pub fn get_save_folder_path(&self) -> Option<std::path::PathBuf> {
-        self.save_folder.as_ref().map(|f| std::path::PathBuf::from(f))
+    pub fn get_save_path(&self) -> Option<std::path::PathBuf> {
+        self.get_save_folder_path()
+            .map(|folder| folder.join("todos.json"))
     }
 
     pub fn load_from_file(&mut self) {
@@ -230,6 +178,10 @@ impl TodoState {
 
     pub fn save_to_file(&self) {
         if let Some(path) = self.get_save_path() {
+            if let Some(folder) = path.parent() {
+                let _ = std::fs::create_dir_all(folder);
+            }
+
             let storage = TodoStorage {
                 items: self.items.clone(),
                 sections: self.sections.clone(),
@@ -255,9 +207,7 @@ impl TodoState {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         self.items
             .iter()
-            .filter(|item| {
-                item.is_automated && item.completed && item.created_at.starts_with(&today)
-            })
+            .filter(|item| item.is_automated && item.completed && item.created_at.starts_with(&today))
             .count()
     }
 
