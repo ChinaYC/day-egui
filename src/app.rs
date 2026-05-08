@@ -63,12 +63,21 @@ impl eframe::App for TemplateApp {
             self.todo_state.load_from_file();
         }
 
+        // 提醒轮询：让应用在空闲时也能“到点触发通知”。
+        // eframe/egui 在没有交互时可能降低刷新频率，这里主动请求定时重绘用于检查提醒。
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+        self.todo_state.poll_reminders_and_persist_if_needed();
+
         // Sync background tasks and update Todo list
         if let Some((task_title, source, description)) = self.leetcode_state.sync_background_state() {
             use crate::todo::TodoItem;
             
             if !self.todo_state.has_today_automated_task(&source) {
-                self.todo_state.items.push(TodoItem::new_automated(task_title, source, description));
+                // 自动任务落到哪个分区由 Todo 设置控制；默认是“自动 (Auto)”分区。
+                let section_id = Some(self.todo_state.automated_target_section_id());
+                self.todo_state
+                    .items
+                    .push(TodoItem::new_automated(task_title, source, description, section_id));
                 self.todo_state.save_to_file();
             }
         }
