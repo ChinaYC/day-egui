@@ -3,6 +3,40 @@ use uuid::Uuid;
 
 use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TodoViewMode {
+    Tasks,
+    Trash,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FilterStatus {
+    All,
+    Active,
+    Completed,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FilterAutomated {
+    All,
+    AutomatedOnly,
+    ManualOnly,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FilterReminder {
+    All,
+    WithReminder,
+    WithoutReminder,
+}
+
+#[derive(Clone)]
+pub enum UndoAction {
+    ReplaceItem { id: Uuid, before: TodoItem },
+    ReinsertItem { index: usize, item: TodoItem },
+    ReinsertMany { items: Vec<(usize, TodoItem)> },
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct TodoState {
@@ -16,6 +50,10 @@ pub struct TodoState {
 
     #[serde(skip)]
     pub item_to_delete: Option<Uuid>,
+    #[serde(skip)]
+    pub delete_is_permanent: bool,
+    #[serde(skip)]
+    pub confirm_clear_trash: bool,
     #[serde(skip)]
     pub dragging_item: Option<Uuid>,
     #[serde(skip)]
@@ -38,6 +76,33 @@ pub struct TodoState {
     pub reminder_input: String,
     #[serde(skip)]
     pub reminder_error_msg: Option<String>,
+
+    #[serde(skip)]
+    pub editing_task: Option<Uuid>,
+    #[serde(skip)]
+    pub edit_title_input: String,
+    #[serde(skip)]
+    pub edit_desc_input: String,
+    #[serde(skip)]
+    pub edit_section_input: Option<Uuid>,
+    #[serde(skip)]
+    pub edit_reminder_input: String,
+    #[serde(skip)]
+    pub edit_error_msg: Option<String>,
+
+    #[serde(skip)]
+    pub view_mode: TodoViewMode,
+    #[serde(skip)]
+    pub search_query: String,
+    #[serde(skip)]
+    pub filter_status: FilterStatus,
+    #[serde(skip)]
+    pub filter_automated: FilterAutomated,
+    #[serde(skip)]
+    pub filter_reminder: FilterReminder,
+
+    #[serde(skip)]
+    pub undo_stack: Vec<UndoAction>,
 
     #[serde(skip)]
     pub section_to_rename: Option<Uuid>,
@@ -69,6 +134,8 @@ impl Default for TodoState {
             new_task_description: String::new(),
             save_folder: None,
             item_to_delete: None,
+            delete_is_permanent: false,
+            confirm_clear_trash: false,
             dragging_item: None,
             dragging_section: None,
             drag_target_index: None,
@@ -79,6 +146,18 @@ impl Default for TodoState {
             editing_reminder: None,
             reminder_input: String::new(),
             reminder_error_msg: None,
+            editing_task: None,
+            edit_title_input: String::new(),
+            edit_desc_input: String::new(),
+            edit_section_input: None,
+            edit_reminder_input: String::new(),
+            edit_error_msg: None,
+            view_mode: TodoViewMode::Tasks,
+            search_query: String::new(),
+            filter_status: FilterStatus::All,
+            filter_automated: FilterAutomated::All,
+            filter_reminder: FilterReminder::All,
+            undo_stack: Vec::new(),
             section_to_rename: None,
             section_rename_input: String::new(),
             section_to_delete: None,
@@ -94,6 +173,43 @@ impl Default for TodoState {
 }
 
 impl TodoState {
+    pub fn push_undo_replace_item(&mut self, id: Uuid, before: TodoItem) {
+        self.undo_stack.push(UndoAction::ReplaceItem { id, before });
+        if self.undo_stack.len() > 50 {
+            self.undo_stack.drain(0..self.undo_stack.len().saturating_sub(50));
+        }
+    }
+
+    pub fn undo_last_action(&mut self) -> bool {
+        let Some(action) = self.undo_stack.pop() else {
+            return false;
+        };
+
+        match action {
+            UndoAction::ReplaceItem { id, before } => {
+                if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
+                    *item = before;
+                    return true;
+                }
+            }
+            UndoAction::ReinsertItem { index, item } => {
+                let idx = index.min(self.items.len());
+                self.items.insert(idx, item);
+                return true;
+            }
+            UndoAction::ReinsertMany { mut items } => {
+                items.sort_by_key(|(idx, _)| *idx);
+                for (index, item) in items {
+                    let idx = index.min(self.items.len());
+                    self.items.insert(idx, item);
+                }
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn ensure_builtin_sections_and_settings(&mut self) {
         let auto_id = self.get_or_create_section_id_by_name("自动 (Auto)");
         let manual_id = self.get_or_create_section_id_by_name("手动 (Manual)");

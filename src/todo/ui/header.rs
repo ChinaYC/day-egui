@@ -1,3 +1,5 @@
+use crate::todo::state::{FilterAutomated, FilterReminder, FilterStatus};
+
 use super::super::{TodoItem, TodoState};
 
 pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) {
@@ -17,6 +19,87 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
 
     ui.add_space(8.0);
     ui.horizontal(|ui| {
+        let undo_enabled = !state.undo_stack.is_empty();
+        if ui
+            .add_enabled(undo_enabled, egui::Button::new("↩ 撤销 (Undo)"))
+            .clicked()
+        {
+            if state.undo_last_action() {
+                *state_changed = true;
+            }
+        }
+
+        ui.add_space(8.0);
+        let search_response = ui.add(
+            egui::TextEdit::singleline(&mut state.search_query)
+                .hint_text("🔍 搜索标题/备注 (Search)")
+                .desired_width(220.0),
+        );
+        if !state.search_query.is_empty() && ui.button("✖").clicked() {
+            state.search_query.clear();
+            search_response.request_focus();
+        }
+
+        ui.add_space(8.0);
+        egui::ComboBox::from_id_salt("filter_status")
+            .selected_text(match state.filter_status {
+                FilterStatus::All => "全部",
+                FilterStatus::Active => "未完成",
+                FilterStatus::Completed => "已完成",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.filter_status, FilterStatus::All, "全部");
+                ui.selectable_value(&mut state.filter_status, FilterStatus::Active, "未完成");
+                ui.selectable_value(&mut state.filter_status, FilterStatus::Completed, "已完成");
+            });
+
+        egui::ComboBox::from_id_salt("filter_automated")
+            .selected_text(match state.filter_automated {
+                FilterAutomated::All => "全部",
+                FilterAutomated::AutomatedOnly => "自动",
+                FilterAutomated::ManualOnly => "手动",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.filter_automated, FilterAutomated::All, "全部");
+                ui.selectable_value(
+                    &mut state.filter_automated,
+                    FilterAutomated::AutomatedOnly,
+                    "自动",
+                );
+                ui.selectable_value(
+                    &mut state.filter_automated,
+                    FilterAutomated::ManualOnly,
+                    "手动",
+                );
+            });
+
+        egui::ComboBox::from_id_salt("filter_reminder")
+            .selected_text(match state.filter_reminder {
+                FilterReminder::All => "全部",
+                FilterReminder::WithReminder => "有提醒",
+                FilterReminder::WithoutReminder => "无提醒",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.filter_reminder, FilterReminder::All, "全部");
+                ui.selectable_value(
+                    &mut state.filter_reminder,
+                    FilterReminder::WithReminder,
+                    "有提醒",
+                );
+                ui.selectable_value(
+                    &mut state.filter_reminder,
+                    FilterReminder::WithoutReminder,
+                    "无提醒",
+                );
+            });
+
+        if ui.button("重置筛选").clicked() {
+            state.search_query.clear();
+            state.filter_status = FilterStatus::All;
+            state.filter_automated = FilterAutomated::All;
+            state.filter_reminder = FilterReminder::All;
+        }
+
         ui.label("📁 保存位置 (Save Location):");
         let path_display = match &state.save_folder {
             Some(p) => p.clone(),
@@ -98,4 +181,3 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
     ui.add_space(16.0);
     ui.separator();
 }
-

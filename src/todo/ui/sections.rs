@@ -3,6 +3,24 @@ use super::super::TodoState;
 pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         if ui
+            .selectable_label(state.view_mode == crate::todo::state::TodoViewMode::Tasks, "任务")
+            .clicked()
+        {
+            state.view_mode = crate::todo::state::TodoViewMode::Tasks;
+            reset_per_section_interactions(state);
+        }
+        if ui
+            .selectable_label(state.view_mode == crate::todo::state::TodoViewMode::Trash, "回收站")
+            .clicked()
+        {
+            state.view_mode = crate::todo::state::TodoViewMode::Trash;
+            reset_per_section_interactions(state);
+        }
+    });
+    ui.add_space(6.0);
+
+    ui.horizontal(|ui| {
+        if ui
             .selectable_label(state.active_section.is_none(), "全部 (All)")
             .clicked()
         {
@@ -34,5 +52,10 @@ fn reset_per_section_interactions(state: &mut TodoState) {
     state.dragging_section = None;
     state.drag_target_index = None;
     state.item_to_delete = None;
+    state.delete_is_permanent = false;
+    state.confirm_clear_trash = false;
     state.editing_reminder = None;
+    state.reminder_error_msg = None;
+    state.editing_task = None;
+    state.edit_error_msg = None;
 }

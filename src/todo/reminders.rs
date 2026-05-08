@@ -20,6 +20,9 @@ pub fn write_reminders_ics(state: &TodoState) {
     let mut events: Vec<(DateTime<Utc>, String, String)> = Vec::new();
 
     for item in &state.items {
+        if item.deleted_at.is_some() {
+            continue;
+        }
         if item.completed {
             continue;
         }
@@ -83,6 +86,9 @@ pub fn poll_due_reminders_and_notify(state: &mut TodoState) -> bool {
     let mut changed = false;
 
     for item in &mut state.items {
+        if item.deleted_at.is_some() {
+            continue;
+        }
         if item.completed {
             continue;
         }
