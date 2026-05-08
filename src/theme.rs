@@ -1,39 +1,48 @@
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 use font_kit::family_name::FamilyName;
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 use font_kit::properties::Properties;
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 use font_kit::source::SystemSource;
 
 pub fn setup_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
-    let source = SystemSource::new();
-    let font_names = vec![
-        "PingFang SC",      // Mac 默认黑体
-        "STHeiti",          // Mac 老黑体
-        "Hiragino Sans GB", // Mac 另一种黑体
-        "Microsoft YaHei",  // Windows 默认微软雅黑
-        "SimHei",           // Windows 黑体
-        "Noto Sans CJK SC", // Linux 常见中文字体
-        "WenQuanYi Micro Hei", 
-    ];
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+    let font_data = {
+        let source = SystemSource::new();
+        let font_names = vec![
+            "PingFang SC",      // Mac 默认黑体
+            "STHeiti",          // Mac 老黑体
+            "Hiragino Sans GB", // Mac 另一种黑体
+            "Microsoft YaHei",  // Windows 默认微软雅黑
+            "SimHei",           // Windows 黑体
+            "Noto Sans CJK SC", // Linux 常见中文字体
+            "WenQuanYi Micro Hei", 
+        ];
 
-    let mut font_data = None;
-
-    for name in font_names {
-        if let Ok(handle) = source.select_best_match(&[FamilyName::Title(name.to_string())], &Properties::new()) {
-            match handle {
-                font_kit::handle::Handle::Path { path, .. } => {
-                    if let Ok(bytes) = std::fs::read(&path) {
-                        font_data = Some(bytes);
+        let mut data = None;
+        for name in font_names {
+            if let Ok(handle) = source.select_best_match(&[FamilyName::Title(name.to_string())], &Properties::new()) {
+                match handle {
+                    font_kit::handle::Handle::Path { path, .. } => {
+                        if let Ok(bytes) = std::fs::read(&path) {
+                            data = Some(bytes);
+                            break;
+                        }
+                    }
+                    font_kit::handle::Handle::Memory { bytes, .. } => {
+                        data = Some((*bytes).clone());
                         break;
                     }
                 }
-                font_kit::handle::Handle::Memory { bytes, .. } => {
-                    font_data = Some((*bytes).clone());
-                    break;
-                }
             }
         }
-    }
+        data
+    };
+    
+    #[cfg(any(target_os = "android", target_arch = "wasm32"))]
+    let font_data: Option<Vec<u8>> = None; // Android / Wasm 下暂时不动态加载系统字体，使用 egui 默认或内嵌字体
 
     if let Some(bytes) = font_data {
         fonts.font_data.insert(

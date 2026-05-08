@@ -39,7 +39,7 @@ cargo build --release
 
 # 2. Create the app bundle structure / 创建应用包结构
 APP_NAME="EfficiencyTool"
-APP_DIR="$HOME/Downloads/$APP_NAME.app"
+APP_DIR="/Users/liam/Downloads/$APP_NAME.app"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
@@ -67,6 +67,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+
+# 5. 可选：赋予可执行权限 / Optional: Grant execution permission
+chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 
 echo "App successfully built at / 应用程序打包成功，路径为: $APP_DIR"
 ```

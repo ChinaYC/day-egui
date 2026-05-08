@@ -14,6 +14,10 @@ pub fn add_log(logs: &Arc<Mutex<Vec<String>>>, msg: &str) {
     let now = chrono::Local::now().format("%H:%M:%S").to_string();
     let mut logs_lock = logs.lock().unwrap();
     logs_lock.push(format!("[{}] {}", now, msg));
+    if logs_lock.len() > 500 {
+        let overflow = logs_lock.len() - 500;
+        logs_lock.drain(0..overflow);
+    }
 }
 
 pub fn check_cancel(cancel_flag: &AtomicBool) -> Result<()> {

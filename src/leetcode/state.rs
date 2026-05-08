@@ -1,7 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
+
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 use headless_chrome::Browser;
+
+#[cfg(any(target_os = "android", target_arch = "wasm32"))]
+pub type Browser = (); // Dummy type for Android/WASM
 
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -11,6 +16,10 @@ pub struct LeetCodeState {
     pub checkin_status: String,
     pub checkin_date: String,
     pub language: String,
+    pub auto_checkin: bool,
+    
+    #[serde(skip)]
+    pub has_attempted_auto_checkin: bool,
     
     #[serde(skip)]
     pub solution_code: Arc<Mutex<String>>,

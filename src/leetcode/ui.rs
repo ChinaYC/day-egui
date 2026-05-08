@@ -24,7 +24,24 @@ impl LeetCodeState {
             self.checkin_date = today.clone();
         }
         
+        let is_running_now = *self.is_running.lock().unwrap_or_else(|e| e.into_inner());
+
+        // 自动打卡逻辑
+        if self.auto_checkin && !already_checked_in_today && !self.has_attempted_auto_checkin && !is_running_now {
+            self.has_attempted_auto_checkin = true;
+            self.start_checkin(ui.ctx());
+        }
+        
         ui.heading("LeetCode 每日打卡 (LeetCode Daily Check-in)");
+        
+        #[cfg(any(target_os = "android", target_os = "ios", target_arch = "wasm32"))]
+        {
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("⚠️ 注意：自动打卡功能目前仅支持桌面端版本 (Desktop version only)")
+                .color(egui::Color32::RED)
+                .strong()
+                .size(14.0));
+        }
         
         ui.add_space(8.0);
         ui.horizontal(|ui| {
@@ -66,7 +83,7 @@ impl LeetCodeState {
 
         ui.add_space(16.0);
         ui.horizontal(|ui| {
-            let is_running = *self.is_running.lock().unwrap_or_else(|e| e.into_inner());
+            let is_running = is_running_now;
             let button_width = ui.available_width() * 0.4;
             
             if is_running {
@@ -80,16 +97,30 @@ impl LeetCodeState {
                     logs.push(format!("[{}] 正在尝试停止... (Stopping...)", now));
                 }
             } else {
-                let btn = egui::Button::new(egui::RichText::new("🚀 开始打卡 (Start Check-in)").size(16.0))
+                #[allow(unused_mut)]
+                let mut btn = egui::Button::new(egui::RichText::new("🚀 开始打卡 (Start Check-in)").size(16.0))
                     .min_size(egui::vec2(button_width, 30.0))
                     .sense(egui::Sense::click());
                 
+                #[cfg(any(target_os = "android", target_os = "ios", target_arch = "wasm32"))]
+                {
+                    btn = egui::Button::new(egui::RichText::new("⚠️ 仅限桌面端 (Desktop Only)").size(16.0))
+                        .min_size(egui::vec2(button_width, 30.0));
+                }
+                
                 //根据ENABLE_CHECKIN_LIMIT判断是否启用打卡按钮
-                let button_chickin_enabled = if ENABLE_CHECKIN_LIMIT {
+                #[allow(unused_mut)]
+                let mut button_chickin_enabled = if ENABLE_CHECKIN_LIMIT {
                     !already_checked_in_today
                 } else {
                     true
                 };
+                
+                #[cfg(any(target_os = "android", target_os = "ios", target_arch = "wasm32"))]
+                {
+                    button_chickin_enabled = false;
+                }
+                
                 let response = ui.add_enabled(button_chickin_enabled, btn);
                 
                 if ENABLE_CHECKIN_LIMIT&&already_checked_in_today {
@@ -104,105 +135,30 @@ impl LeetCodeState {
                 }
                 
                 if response.clicked() {
-                        self.cancel_flag.store(false, Ordering::Relaxed);
-                        let is_running_clone = Arc::clone(&self.is_running);
-                        let logs_clone = Arc::clone(&self.logs);
-                        let code_clone = Arc::clone(&self.solution_code);
-                        let last_submitted_clone = Arc::clone(&self.last_submitted);
-                        let cancel_flag_clone = Arc::clone(&self.cancel_flag);
-                        let browser_instance_clone = Arc::clone(&self.browser_instance);
-                        
-                        // We need to pass back strings to the UI state safely across threads
-                        // using Arc<Mutex<String>> wrapper for problem_title and checkin_status
-                        let problem_title_ref = Arc::new(Mutex::new(self.problem_title.clone()));
-                        let checkin_status_ref = Arc::new(Mutex::new(self.checkin_status.clone()));
-                        let daily_problem_url_ref = Arc::new(Mutex::new(self.daily_problem_url.clone()));
-                        
-                        let problem_title_clone = Arc::clone(&problem_title_ref);
-                        let checkin_status_clone = Arc::clone(&checkin_status_ref);
-                        let daily_problem_url_clone = Arc::clone(&daily_problem_url_ref);
-                        let sync_status_clone = Arc::clone(&self.status_message);
-                        
-                        *is_running_clone.lock().unwrap() = true;
-                        
-                        // Clear previous logs and append start message
-                        {
-                            let mut logs = logs_clone.lock().unwrap();
-                            logs.clear();
-                            let now = chrono::Local::now().format("%H:%M:%S").to_string();
-                            logs.push(format!("[{}] 启动浏览器... (Starting browser...)", now));
-                        }
+                    self.start_checkin(ui.ctx());
+                }
+            }
 
-                        let ctx = ui.ctx().clone();
-
-                        #[cfg(not(target_arch = "wasm32"))]
-                        thread::spawn(move || {
-                            use crate::leetcode::automation;
-                            
-                            let logs_for_automation = Arc::clone(&logs_clone);
-                            match automation::run_daily_flow(
-                                logs_for_automation, 
-                                cancel_flag_clone, 
-                                browser_instance_clone,
-                                problem_title_clone.clone(),
-                                checkin_status_clone.clone(),
-                                daily_problem_url_clone.clone(),
-                            ) {
-                                Ok(code) => {
-                                    // Sync back
-                                    if let (Ok(title), Ok(status), Ok(url)) = (problem_title_clone.lock(), checkin_status_clone.lock(), daily_problem_url_clone.lock()) {
-                                        *sync_status_clone.lock().unwrap() = format!("SYNC:|{}|{}|{}", *title, *status, *url);
-                                    }
-                                    if !code.is_empty() {
-                                        *code_clone.lock().unwrap() = code.clone();
-                                    }
-                                    let mut logs = logs_clone.lock().unwrap();
-                                    let now = chrono::Local::now().format("%H:%M:%S").to_string();
-                                    logs.push(format!("[{}] 成功 (Success)! 代码长度: {}", now, code.len()));
-                                    
-                                    *last_submitted_clone.lock().unwrap() = Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
-                                }
-                                Err(e) => {
-                                    // Sync back
-                                    if let (Ok(title), Ok(status), Ok(url)) = (problem_title_clone.lock(), checkin_status_clone.lock(), daily_problem_url_clone.lock()) {
-                                        *sync_status_clone.lock().unwrap() = format!("SYNC:|{}|{}|{}", *title, *status, *url);
-                                    }
-                                    let mut logs = logs_clone.lock().unwrap();
-                                    let now = chrono::Local::now().format("%H:%M:%S").to_string();
-                                    logs.push(format!("[{}] 错误 (Error): {}", now, e));
-                                }
-                            }
-                            *is_running_clone.lock().unwrap() = false;
-                            
-                            // 强制刷新 UI 使得能够立即响应 SYNC 并添加到 Todo
-                            ctx.request_repaint();
+            ui.add_space(8.0);
+            ui.checkbox(&mut self.auto_checkin, "自动打卡");
+            
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let copy_btn = egui::Button::new("📋 复制答案 (Copy Answer)").min_size(egui::vec2(180.0, 30.0)).sense(egui::Sense::click());
+                let copy_response = ui.add(copy_btn);
+                
+                if copy_response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
+                    #[allow(deprecated)]
+                    egui::Tooltip::new(copy_response.id.with("fallback"), ui.ctx().clone(), egui::PopupAnchor::Pointer, ui.layer_id())
+                        .show(|ui| {
+                            ui.label("点击将代码复制到剪贴板 (Click to copy code to clipboard)");
                         });
-                        
-                        #[cfg(target_arch = "wasm32")]
-                        {
-                            let mut logs = logs_clone.lock().unwrap();
-                            let now = chrono::Local::now().format("%H:%M:%S").to_string();
-                            logs.push(format!("[{}] WASM 暂不支持自动化操作 (WASM not supported for automation)", now));
-                            *is_running_clone.lock().unwrap() = false;
-                        }
-                    }
-            }
-            
-            let copy_btn = egui::Button::new("📋 复制答案 (Copy Answer)").min_size(egui::vec2(200.0, 30.0)).sense(egui::Sense::click());
-            let copy_response = ui.add(copy_btn);
-            
-            if copy_response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
-                #[allow(deprecated)]
-                egui::Tooltip::new(copy_response.id.with("fallback"), ui.ctx().clone(), egui::PopupAnchor::Pointer, ui.layer_id())
-                    .show(|ui| {
-                        ui.label("点击将代码复制到剪贴板 (Click to copy code to clipboard)");
-                    });
-            }
+                }
 
-            if copy_response.clicked() {
-                let code = self.solution_code.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                ui.ctx().copy_text(code);
-            }
+                if copy_response.clicked() {
+                    let code = self.solution_code.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    ui.ctx().copy_text(code);
+                }
+            });
         });
 
         let logs = self.logs.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -220,6 +176,100 @@ impl LeetCodeState {
         if let Some(time) = last_sub {
             ui.add_space(8.0);
             ui.label(egui::RichText::new(format!("最后提交时间 (Last Submitted): {}", time)).color(egui::Color32::LIGHT_GREEN));
+        }
+    }
+
+    pub fn start_checkin(&mut self, ctx: &egui::Context) {
+        let is_running_clone = Arc::clone(&self.is_running);
+        let logs_clone = Arc::clone(&self.logs);
+        let code_clone = Arc::clone(&self.solution_code);
+        let last_submitted_clone = Arc::clone(&self.last_submitted);
+        let cancel_flag_clone = Arc::clone(&self.cancel_flag);
+        let browser_instance_clone = Arc::clone(&self.browser_instance);
+        
+        // We need to pass back strings to the UI state safely across threads
+        // using Arc<Mutex<String>> wrapper for problem_title and checkin_status
+        let problem_title_ref = Arc::new(Mutex::new(self.problem_title.clone()));
+        let checkin_status_ref = Arc::new(Mutex::new(self.checkin_status.clone()));
+        let daily_problem_url_ref = Arc::new(Mutex::new(self.daily_problem_url.clone()));
+        
+        let problem_title_clone = Arc::clone(&problem_title_ref);
+        let checkin_status_clone = Arc::clone(&checkin_status_ref);
+        let daily_problem_url_clone = Arc::clone(&daily_problem_url_ref);
+        let sync_status_clone = Arc::clone(&self.status_message);
+
+        {
+            let mut is_running = is_running_clone.lock().unwrap_or_else(|e| e.into_inner());
+            if *is_running {
+                let mut logs = logs_clone.lock().unwrap_or_else(|e| e.into_inner());
+                let now = chrono::Local::now().format("%H:%M:%S").to_string();
+                logs.push(format!("[{}] 已有任务正在运行，请先停止后再试", now));
+                return;
+            }
+            *is_running = true;
+        }
+
+        self.cancel_flag.store(false, Ordering::Relaxed);
+
+        // Clear previous logs and append start message
+        {
+            let mut logs = logs_clone.lock().unwrap();
+            logs.clear();
+            let now = chrono::Local::now().format("%H:%M:%S").to_string();
+            logs.push(format!("[{}] 启动浏览器... (Starting browser...)", now));
+        }
+
+        let ctx_clone = ctx.clone();
+
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        thread::spawn(move || {
+            use crate::leetcode::automation;
+            
+            let logs_for_automation = Arc::clone(&logs_clone);
+            match automation::run_daily_flow(
+                logs_for_automation, 
+                cancel_flag_clone, 
+                browser_instance_clone,
+                problem_title_clone.clone(),
+                checkin_status_clone.clone(),
+                daily_problem_url_clone.clone(),
+            ) {
+                Ok(code) => {
+                    // Sync back
+                    if let (Ok(title), Ok(status), Ok(url)) = (problem_title_clone.lock(), checkin_status_clone.lock(), daily_problem_url_clone.lock()) {
+                        *sync_status_clone.lock().unwrap() = format!("SYNC:|{}|{}|{}", *title, *status, *url);
+                    }
+                    if !code.is_empty() {
+                        *code_clone.lock().unwrap() = code.clone();
+                    }
+                    let mut logs = logs_clone.lock().unwrap();
+                    let now = chrono::Local::now().format("%H:%M:%S").to_string();
+                    logs.push(format!("[{}] 成功 (Success)! 代码长度: {}", now, code.len()));
+                    
+                    *last_submitted_clone.lock().unwrap() = Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
+                }
+                Err(e) => {
+                    // Sync back
+                    if let (Ok(title), Ok(status), Ok(url)) = (problem_title_clone.lock(), checkin_status_clone.lock(), daily_problem_url_clone.lock()) {
+                        *sync_status_clone.lock().unwrap() = format!("SYNC:|{}|{}|{}", *title, *status, *url);
+                    }
+                    let mut logs = logs_clone.lock().unwrap();
+                    let now = chrono::Local::now().format("%H:%M:%S").to_string();
+                    logs.push(format!("[{}] 错误 (Error): {}", now, e));
+                }
+            }
+            *is_running_clone.lock().unwrap() = false;
+            
+            // 强制刷新 UI 使得能够立即响应 SYNC 并添加到 Todo
+            ctx_clone.request_repaint();
+        });
+        
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        {
+            let mut logs = logs_clone.lock().unwrap();
+            let now = chrono::Local::now().format("%H:%M:%S").to_string();
+            logs.push(format!("[{}] 此平台暂不支持自动化操作 (Automation not supported on this platform)", now));
+            *is_running_clone.lock().unwrap() = false;
         }
     }
 }

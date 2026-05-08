@@ -1,16 +1,11 @@
 use anyhow::Result;
 use headless_chrome::{Browser, Tab};
+use super::daily::add_log;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-fn add_log(logs: &Arc<Mutex<Vec<String>>>, msg: &str) {
-    let now = chrono::Local::now().format("%H:%M:%S").to_string();
-    let mut logs_lock = logs.lock().unwrap();
-    logs_lock.push(format!("[{}] {}", now, msg));
-}
-
 ///等待元素出现
-fn wait_for_element(tab: &Tab, selector: &str,timeout: Duration) -> Result<()> {
+fn wait_for_element(tab: &Tab, selector: &str, timeout: Duration) -> Result<()> {
     let start = std::time::Instant::now();
     loop {
         if start.elapsed() > timeout {
@@ -18,7 +13,11 @@ fn wait_for_element(tab: &Tab, selector: &str,timeout: Duration) -> Result<()> {
         }
 
         // 检查元素是否存在
-       let exists = tab.evaluate(&format!("document.querySelector('{}') !== null", selector), false)?
+        let exists = tab
+            .evaluate(
+                &format!("document.querySelector('{}') !== null", selector),
+                false,
+            )?
             .value
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
@@ -57,7 +56,9 @@ pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_fl
     add_log(logs, "等待页面加载... (Waiting for page load)");
     // 忽略导航过程中的网络错误，有时候部分资源加载失败会报错但页面其实已经出来了
     let _ = tab.navigate_to("https://leetcode.cn/");
-    std::thread::sleep(Duration::from_secs(5)); // 给页面留出足够的渲染时间
+    if let Err(e) = wait_for_element(&tab, "body", Duration::from_secs(15)) {
+        add_log(logs, &format!("页面元素等待失败，继续尝试: {e}"));
+    }
 
     // 尝试点击登录按钮，触发登录弹窗或跳转页面
     let _ = tab.evaluate(

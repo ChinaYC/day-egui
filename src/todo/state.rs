@@ -1,9 +1,63 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TodoItem {
+    pub id: Uuid,
+    pub title: String,
+    pub completed: bool,
+    pub created_at: String,
+    #[serde(default)]
+    pub is_automated: bool,
+    #[serde(default)]
+    pub automated_source: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub reminder_time: Option<String>,
+    #[serde(default)]
+    pub is_deleted: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
 
-#[derive(Serialize, Deserialize)]
+impl TodoItem {
+    pub fn new(title: String, description: Option<String>, category: Option<String>, reminder_time: Option<String>) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            title,
+            completed: false,
+            created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            is_automated: false,
+            automated_source: None,
+            description,
+            category,
+            reminder_time,
+            is_deleted: false,
+            tags: Vec::new(),
+        }
+    }
+
+    pub fn new_automated(title: String, source: String, description: Option<String>) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            title,
+            completed: false,
+            created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            is_automated: true,
+            automated_source: Some(source),
+            description,
+            category: Some("Automated".to_string()),
+            reminder_time: None,
+            is_deleted: false,
+            tags: Vec::new(),
+        }
+    }
+}
+
+#[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TodoState {
     pub items: Vec<TodoItem>,
@@ -11,7 +65,17 @@ pub struct TodoState {
     pub settings: TodoSettings,
     pub new_task_title: String,
     pub new_task_description: String,
-
+    pub new_task_category: String,
+    pub new_task_reminder: String,
+    pub new_task_tags: String,
+    
+    // 过滤分类
+    pub filter_category: Option<String>,
+    
+    // 过滤标签
+    pub filter_tag: Option<String>,
+    
+    // 自定义保存路径
     pub save_folder: Option<String>,
 
     #[serde(skip)]
