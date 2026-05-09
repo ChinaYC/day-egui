@@ -39,35 +39,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("回收站 (Trash)").strong());
             if ui.button("清空回收站").clicked() {
-                state.confirm_clear_trash = true;
+                clear_trash_confirmed = true;
             }
         });
         ui.add_space(6.0);
-    }
-
-    if state.confirm_clear_trash {
-        let mut open = true;
-        egui::Window::new("清空回收站 (Clear trash)")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ui.ctx(), |ui| {
-                ui.label("确认彻底删除回收站内所有任务？此操作不可撤销。");
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    if ui.button("取消").clicked() {
-                        state.confirm_clear_trash = false;
-                    }
-                    if ui.button("确认清空").clicked() {
-                        clear_trash_confirmed = true;
-                        state.confirm_clear_trash = false;
-                    }
-                });
-            });
-        if !open {
-            state.confirm_clear_trash = false;
-        }
     }
 
     let query = state.search_query.trim().to_lowercase();
@@ -149,8 +124,6 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                             state.dragging_item = Some(item_id);
                                             state.dragging_section = Some(section_id);
                                             state.drag_target_index = Some(visible_index);
-                                            state.item_to_delete = None;
-                                            state.delete_is_permanent = false;
                                             state.editing_reminder = None;
                                             state.editing_task = None;
                                         }
@@ -221,35 +194,12 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                                 restore_confirmed = Some(item_id);
                                             }
 
-                                            if state.item_to_delete == Some(item_id)
-                                                && state.delete_is_permanent
-                                            {
-                                                if ui.button("取消").clicked() {
-                                                    state.item_to_delete = None;
-                                                }
-                                                if ui.button("确认删除").clicked() {
-                                                    purge_confirmed = Some(item_id);
-                                                    state.item_to_delete = None;
-                                                    state.delete_is_permanent = false;
-                                                }
-                                            } else if ui.button("彻底删除").clicked() {
-                                                state.item_to_delete = Some(item_id);
-                                                state.delete_is_permanent = true;
+                                            if ui.button("彻底删除").clicked() {
+                                                purge_confirmed = Some(item_id);
                                             }
                                         } else {
-                                            if state.item_to_delete == Some(item_id)
-                                                && !state.delete_is_permanent
-                                            {
-                                                if ui.button("取消 (Cancel)").clicked() {
-                                                    state.item_to_delete = None;
-                                                }
-                                                if ui.button("删除 (Delete)").clicked() {
-                                                    delete_confirmed = Some(item_id);
-                                                    state.item_to_delete = None;
-                                                }
-                                            } else if ui.button("🗑️").clicked() {
-                                                state.item_to_delete = Some(item_id);
-                                                state.delete_is_permanent = false;
+                                            if ui.button("🗑️").clicked() {
+                                                delete_confirmed = Some(item_id);
                                             }
 
                                             if ui.button("⏰").clicked() {

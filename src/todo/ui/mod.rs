@@ -2,6 +2,7 @@ mod header;
 mod editor;
 mod list;
 mod reminder;
+mod snackbar;
 mod sections;
 mod settings;
 
@@ -59,6 +60,7 @@ impl TodoState {
                 item.deleted_at = Some(chrono::Utc::now());
                 item.reminder_sent = true;
                 self.push_undo_replace_item(item_id, before);
+                self.show_snackbar("已删除");
                 state_changed = true;
             }
         }
@@ -80,6 +82,7 @@ impl TodoState {
                 let item = self.items.remove(pos);
                 self.undo_stack
                     .push(crate::todo::state::UndoAction::ReinsertItem { index: pos, item });
+                self.show_snackbar("已彻底删除");
                 state_changed = true;
             }
         }
@@ -98,6 +101,7 @@ impl TodoState {
             if !removed.is_empty() {
                 self.undo_stack
                     .push(crate::todo::state::UndoAction::ReinsertMany { items: removed });
+                self.show_snackbar("回收站已清空");
                 state_changed = true;
             }
         }
@@ -111,6 +115,7 @@ impl TodoState {
         editor::show(self, ui, &mut state_changed);
         reminder::show(self, ui, &mut state_changed);
         settings::show(self, ui, &mut state_changed);
+        snackbar::show(self, ui, &mut state_changed);
 
         if state_changed {
             self.save_to_file();

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TodoViewMode {
@@ -42,6 +43,11 @@ pub enum FilterReminder {
 pub enum SortMode {
     Manual,
     Priority,
+}
+
+pub struct Snackbar {
+    pub message: String,
+    pub expires_at: Instant,
 }
 
 #[derive(Clone)]
@@ -129,6 +135,9 @@ pub struct TodoState {
     pub undo_stack: Vec<UndoAction>,
 
     #[serde(skip)]
+    pub snackbar: Option<Snackbar>,
+
+    #[serde(skip)]
     pub new_task_error_msg: Option<String>,
     #[serde(skip)]
     pub new_task_priority: u8,
@@ -193,6 +202,7 @@ impl Default for TodoState {
             filter_reminder: FilterReminder::All,
             sort_mode: SortMode::Manual,
             undo_stack: Vec::new(),
+            snackbar: None,
             new_task_error_msg: None,
             new_task_priority: 2,
             section_to_rename: None,
@@ -210,6 +220,17 @@ impl Default for TodoState {
 }
 
 impl TodoState {
+    pub fn show_snackbar(&mut self, message: impl Into<String>) {
+        self.snackbar = Some(Snackbar {
+            message: message.into(),
+            expires_at: Instant::now() + Duration::from_secs(4),
+        });
+    }
+
+    pub fn dismiss_snackbar(&mut self) {
+        self.snackbar = None;
+    }
+
     pub fn push_undo_replace_item(&mut self, id: Uuid, before: TodoItem) {
         self.undo_stack.push(UndoAction::ReplaceItem { id, before });
         if self.undo_stack.len() > 50 {

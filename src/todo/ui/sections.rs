@@ -87,9 +87,6 @@ fn reset_per_section_interactions(state: &mut TodoState) {
     state.dragging_item = None;
     state.dragging_section = None;
     state.drag_target_index = None;
-    state.item_to_delete = None;
-    state.delete_is_permanent = false;
-    state.confirm_clear_trash = false;
     state.editing_reminder = None;
     state.reminder_error_msg = None;
     state.editing_task = None;
