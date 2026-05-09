@@ -1,11 +1,18 @@
 use std::io::Write;
 
-use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};
 
 use super::{notifications, TodoState};
 
 pub fn parse_local_datetime_to_utc(input: &str) -> Option<DateTime<Utc>> {
     let naive = NaiveDateTime::parse_from_str(input.trim(), "%Y-%m-%d %H:%M").ok()?;
+    let local = Local.from_local_datetime(&naive).single()?;
+    Some(local.with_timezone(&Utc))
+}
+
+pub fn parse_local_date_to_utc_end_of_day(input: &str) -> Option<DateTime<Utc>> {
+    let date = NaiveDate::parse_from_str(input.trim(), "%Y-%m-%d").ok()?;
+    let naive = date.and_hms_opt(23, 59, 0)?;
     let local = Local.from_local_datetime(&naive).single()?;
     Some(local.with_timezone(&Utc))
 }

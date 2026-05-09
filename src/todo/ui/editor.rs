@@ -8,6 +8,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
     let item = state.items.iter().find(|i| i.id == item_id);
     let item_title = item.map(|i| i.title.clone()).unwrap_or_default();
     let item_deleted = item.map(|i| i.deleted_at.is_some()).unwrap_or(false);
+    let item_completed = item.map(|i| i.completed).unwrap_or(false);
 
     let mut open = true;
     egui::Window::new("编辑任务 (Edit task)")
@@ -52,6 +53,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 });
 
             ui.add_space(6.0);
+            ui.label("到期日 (Due, YYYY-MM-DD):");
+            ui.text_edit_singleline(&mut state.edit_due_input);
+
+            ui.add_space(6.0);
             ui.label("提醒 (Reminder, YYYY-MM-DD HH:MM):");
             ui.text_edit_singleline(&mut state.edit_reminder_input);
 
@@ -82,9 +87,28 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     let desc = state.edit_desc_input.trim().to_string();
                     let description = if desc.is_empty() { None } else { Some(desc) };
 
+                    let due_at = if state.edit_due_input.trim().is_empty() {
+                        None
+                    } else {
+                        let Some(parsed) =
+                            crate::todo::reminders::parse_local_date_to_utc_end_of_day(
+                                &state.edit_due_input,
+                            )
+                        else {
+                            state.edit_error_msg = Some("到期日格式应为 YYYY-MM-DD".to_string());
+                            return;
+                        };
+                        Some(parsed)
+                    };
+
                     let reminder_at = if state.edit_reminder_input.trim().is_empty() {
                         None
                     } else {
+                        if item_completed {
+                            state.edit_error_msg =
+                                Some("已完成任务不会提醒，请先取消完成状态".to_string());
+                            return;
+                        }
                         let Some(parsed) = crate::todo::reminders::parse_local_datetime_to_utc(
                             &state.edit_reminder_input,
                         ) else {
@@ -104,6 +128,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         item.title = title;
                         item.description = description;
                         item.section_id = state.edit_section_input;
+                        item.due_at = due_at;
                         item.reminder_at = reminder_at;
                         item.reminder_sent = item.completed || item.reminder_at.is_none();
                         state.push_undo_replace_item(item_id, before);
@@ -121,4 +146,3 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         state.edit_error_msg = None;
     }
 }
-

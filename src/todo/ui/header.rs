@@ -161,11 +161,51 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         Some(state.new_task_description.clone())
                     };
                     let section_id = state.new_task_section;
-                    state
-                        .items
-                        .push(TodoItem::new(state.new_task_title.clone(), desc, section_id));
+
+                    let due_at = if state.new_task_due.trim().is_empty() {
+                        None
+                    } else {
+                        let Some(parsed) =
+                            crate::todo::reminders::parse_local_date_to_utc_end_of_day(
+                                &state.new_task_due,
+                            )
+                        else {
+                            state.new_task_error_msg =
+                                Some("到期日格式应为 YYYY-MM-DD".to_string());
+                            return;
+                        };
+                        Some(parsed)
+                    };
+
+                    let reminder_at = if state.new_task_reminder.trim().is_empty() {
+                        None
+                    } else {
+                        let Some(parsed) =
+                            crate::todo::reminders::parse_local_datetime_to_utc(
+                                &state.new_task_reminder,
+                            )
+                        else {
+                            state.new_task_error_msg =
+                                Some("提醒时间格式应为 YYYY-MM-DD HH:MM".to_string());
+                            return;
+                        };
+                        if parsed <= chrono::Utc::now() {
+                            state.new_task_error_msg = Some("提醒时间需为未来时间".to_string());
+                            return;
+                        }
+                        Some(parsed)
+                    };
+
+                    let mut item = TodoItem::new(state.new_task_title.clone(), desc, section_id);
+                    item.due_at = due_at;
+                    item.reminder_at = reminder_at;
+                    item.reminder_sent = item.reminder_at.is_none();
+                    state.items.push(item);
                     state.new_task_title.clear();
                     state.new_task_description.clear();
+                    state.new_task_due.clear();
+                    state.new_task_reminder.clear();
+                    state.new_task_error_msg = None;
                     *state_changed = true;
                 }
             }
@@ -176,6 +216,20 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             ui.text_edit_singleline(&mut state.new_task_description);
             ui.label("任务备注 (Description, 可选)");
         });
+
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.text_edit_singleline(&mut state.new_task_due);
+            ui.label("到期日 (Due, YYYY-MM-DD, 可选)");
+            ui.add_space(12.0);
+            ui.text_edit_singleline(&mut state.new_task_reminder);
+            ui.label("提醒 (Reminder, YYYY-MM-DD HH:MM, 可选)");
+        });
+
+        if let Some(err) = &state.new_task_error_msg {
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new(err).color(egui::Color32::RED));
+        }
     });
 
     ui.add_space(16.0);

@@ -10,6 +10,14 @@ pub enum TodoViewMode {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TaskSmartView {
+    All,
+    Inbox,
+    Today,
+    Next7Days,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FilterStatus {
     All,
     Active,
@@ -45,6 +53,8 @@ pub struct TodoState {
     pub settings: TodoSettings,
     pub new_task_title: String,
     pub new_task_description: String,
+    pub new_task_due: String,
+    pub new_task_reminder: String,
 
     pub save_folder: Option<String>,
 
@@ -86,12 +96,16 @@ pub struct TodoState {
     #[serde(skip)]
     pub edit_section_input: Option<Uuid>,
     #[serde(skip)]
+    pub edit_due_input: String,
+    #[serde(skip)]
     pub edit_reminder_input: String,
     #[serde(skip)]
     pub edit_error_msg: Option<String>,
 
     #[serde(skip)]
     pub view_mode: TodoViewMode,
+    #[serde(skip)]
+    pub smart_view: TaskSmartView,
     #[serde(skip)]
     pub search_query: String,
     #[serde(skip)]
@@ -103,6 +117,9 @@ pub struct TodoState {
 
     #[serde(skip)]
     pub undo_stack: Vec<UndoAction>,
+
+    #[serde(skip)]
+    pub new_task_error_msg: Option<String>,
 
     #[serde(skip)]
     pub section_to_rename: Option<Uuid>,
@@ -132,6 +149,8 @@ impl Default for TodoState {
             settings: TodoSettings::default(),
             new_task_title: String::new(),
             new_task_description: String::new(),
+            new_task_due: String::new(),
+            new_task_reminder: String::new(),
             save_folder: None,
             item_to_delete: None,
             delete_is_permanent: false,
@@ -150,14 +169,17 @@ impl Default for TodoState {
             edit_title_input: String::new(),
             edit_desc_input: String::new(),
             edit_section_input: None,
+            edit_due_input: String::new(),
             edit_reminder_input: String::new(),
             edit_error_msg: None,
             view_mode: TodoViewMode::Tasks,
+            smart_view: TaskSmartView::All,
             search_query: String::new(),
             filter_status: FilterStatus::All,
             filter_automated: FilterAutomated::All,
             filter_reminder: FilterReminder::All,
             undo_stack: Vec::new(),
+            new_task_error_msg: None,
             section_to_rename: None,
             section_rename_input: String::new(),
             section_to_delete: None,

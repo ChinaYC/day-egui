@@ -19,6 +19,42 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
     });
     ui.add_space(6.0);
 
+    if state.view_mode == crate::todo::state::TodoViewMode::Tasks {
+        ui.horizontal(|ui| {
+            use crate::todo::state::TaskSmartView;
+
+            if ui
+                .selectable_label(state.smart_view == TaskSmartView::All, "全部")
+                .clicked()
+            {
+                state.smart_view = TaskSmartView::All;
+                reset_per_section_interactions(state);
+            }
+            if ui
+                .selectable_label(state.smart_view == TaskSmartView::Inbox, "收件箱")
+                .clicked()
+            {
+                state.smart_view = TaskSmartView::Inbox;
+                reset_per_section_interactions(state);
+            }
+            if ui
+                .selectable_label(state.smart_view == TaskSmartView::Today, "今天")
+                .clicked()
+            {
+                state.smart_view = TaskSmartView::Today;
+                reset_per_section_interactions(state);
+            }
+            if ui
+                .selectable_label(state.smart_view == TaskSmartView::Next7Days, "未来7天")
+                .clicked()
+            {
+                state.smart_view = TaskSmartView::Next7Days;
+                reset_per_section_interactions(state);
+            }
+        });
+        ui.add_space(6.0);
+    }
+
     ui.horizontal(|ui| {
         if ui
             .selectable_label(state.active_section.is_none(), "全部 (All)")

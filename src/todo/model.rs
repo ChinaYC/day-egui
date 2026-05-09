@@ -21,6 +21,9 @@ pub struct TodoItem {
     #[serde(default)]
     pub reminder_sent: bool,
 
+    #[serde(default)]
+    pub due_at: Option<DateTime<Utc>>,
+
     // 回收站：软删除后会带上删除时间；列表默认隐藏，回收站视图可恢复/彻底删除。
     #[serde(default)]
     pub deleted_at: Option<DateTime<Utc>>,
@@ -43,6 +46,7 @@ impl TodoItem {
             section_id,
             reminder_at: None,
             reminder_sent: false,
+            due_at: None,
             deleted_at: None,
             is_automated: false,
             automated_source: None,
@@ -64,6 +68,7 @@ impl TodoItem {
             section_id,
             reminder_at: None,
             reminder_sent: false,
+            due_at: None,
             deleted_at: None,
             is_automated: true,
             automated_source: Some(source),
@@ -73,6 +78,10 @@ impl TodoItem {
 
     pub fn reminder_at_local_string(&self) -> Option<String> {
         self.reminder_at.map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string())
+    }
+
+    pub fn due_at_local_string(&self) -> Option<String> {
+        self.due_at.map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d").to_string())
     }
 }
 

@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::todo::state::{FilterAutomated, FilterReminder, FilterStatus, TodoViewMode};
+use crate::todo::state::{FilterAutomated, FilterReminder, FilterStatus, TaskSmartView, TodoViewMode};
 
 use super::super::TodoState;
 
@@ -245,9 +245,23 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                         if let Some(reminder_text) = item.reminder_at_local_string()
                                         {
                                             ui.label(
-                                                egui::RichText::new(reminder_text)
+                                                egui::RichText::new(format!("⏰ {reminder_text}"))
                                                     .size(10.0)
                                                     .color(egui::Color32::GRAY),
+                                            );
+                                        }
+
+                                        if let Some(due_text) = item.due_at_local_string() {
+                                            let overdue = is_overdue(item);
+                                            let color = if overdue {
+                                                egui::Color32::LIGHT_RED
+                                            } else {
+                                                egui::Color32::GRAY
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(format!("📅 {due_text}"))
+                                                    .size(10.0)
+                                                    .color(color),
                                             );
                                         }
 
@@ -344,6 +358,38 @@ fn item_matches_filters(state: &TodoState, item: &crate::todo::model::TodoItem, 
         }
     }
 
+    if state.view_mode == TodoViewMode::Tasks {
+        match state.smart_view {
+            TaskSmartView::All => {}
+            TaskSmartView::Inbox => {
+                if item.due_at.is_some() {
+                    return false;
+                }
+            }
+            TaskSmartView::Today => {
+                let Some(due) = item.due_at else {
+                    return false;
+                };
+                let today = chrono::Local::now().date_naive();
+                let due_date = due.with_timezone(&chrono::Local).date_naive();
+                if due_date != today {
+                    return false;
+                }
+            }
+            TaskSmartView::Next7Days => {
+                let Some(due) = item.due_at else {
+                    return false;
+                };
+                let today = chrono::Local::now().date_naive();
+                let end = today + chrono::Duration::days(6);
+                let due_date = due.with_timezone(&chrono::Local).date_naive();
+                if due_date < today || due_date > end {
+                    return false;
+                }
+            }
+        }
+    }
+
     match state.filter_status {
         FilterStatus::All => {}
         FilterStatus::Active => {
@@ -400,4 +446,14 @@ fn item_matches_filters(state: &TodoState, item: &crate::todo::model::TodoItem, 
     }
 
     true
+}
+
+fn is_overdue(item: &crate::todo::model::TodoItem) -> bool {
+    if item.completed || item.deleted_at.is_some() {
+        return false;
+    }
+    let Some(due) = item.due_at else {
+        return false;
+    };
+    due < chrono::Utc::now()
 }

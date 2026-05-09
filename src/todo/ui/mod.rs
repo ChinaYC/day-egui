@@ -33,6 +33,7 @@ impl TodoState {
                     self.edit_title_input = item.title.clone();
                     self.edit_desc_input = item.description.clone().unwrap_or_default();
                     self.edit_section_input = item.section_id;
+                    self.edit_due_input = item.due_at_local_string().unwrap_or_default();
                     self.edit_reminder_input = item.reminder_at_local_string().unwrap_or_default();
                 }
             }
