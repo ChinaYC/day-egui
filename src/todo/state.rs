@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
+use super::model::{TodoItem, TodoPlanner, TodoSection, TodoSettings, TodoStorage};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write as _};
 use std::time::{Duration, Instant};
@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TodoViewMode {
     Tasks,
+    Planner,
     Trash,
 }
 
@@ -65,6 +66,7 @@ pub struct TodoState {
     pub items: Vec<TodoItem>,
     pub sections: Vec<TodoSection>,
     pub settings: TodoSettings,
+    pub planner: TodoPlanner,
     pub new_task_title: String,
     pub new_task_description: String,
     pub new_task_due: String,
@@ -170,6 +172,7 @@ impl Default for TodoState {
             items: Vec::new(),
             sections: Vec::new(),
             settings: TodoSettings::default(),
+            planner: TodoPlanner::default(),
             new_task_title: String::new(),
             new_task_description: String::new(),
             new_task_due: String::new(),
@@ -360,6 +363,7 @@ impl TodoState {
                     self.items = storage.items;
                     self.sections = storage.sections;
                     self.settings = storage.settings;
+                    self.planner = storage.planner;
                 } else {
                     let items_res = File::open(&path)
                         .ok()
@@ -391,6 +395,7 @@ impl TodoState {
                 items: self.items.clone(),
                 sections: self.sections.clone(),
                 settings: self.settings.clone(),
+                planner: self.planner.clone(),
             };
 
             let Some(folder) = path.parent() else {

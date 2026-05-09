@@ -332,6 +332,9 @@ fn item_matches_filters(state: &TodoState, item: &crate::todo::model::TodoItem, 
                 return false;
             }
         }
+        TodoViewMode::Planner => {
+            return false;
+        }
         TodoViewMode::Trash => {
             if item.deleted_at.is_none() {
                 return false;

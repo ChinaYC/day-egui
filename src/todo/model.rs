@@ -150,8 +150,53 @@ pub struct TodoStorage {
     pub items: Vec<TodoItem>,
     pub sections: Vec<TodoSection>,
     pub settings: TodoSettings,
+    pub planner: TodoPlanner,
 }
 
 fn default_schema_version() -> u32 {
     1
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct PlannerEntry {
+    pub text: String,
+    pub done: bool,
+}
+
+impl Default for PlannerEntry {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            done: false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct TodoPlanner {
+    pub date: String,
+    pub long_term: Vec<PlannerEntry>,
+    pub weekly: Vec<PlannerEntry>,
+    pub daily: Vec<Vec<PlannerEntry>>,
+    pub reward: String,
+    pub notes: String,
+}
+
+impl Default for TodoPlanner {
+    fn default() -> Self {
+        let mut daily: Vec<Vec<PlannerEntry>> = Vec::new();
+        for _ in 0..7 {
+            daily.push(vec![PlannerEntry::default(), PlannerEntry::default(), PlannerEntry::default()]);
+        }
+        Self {
+            date: String::new(),
+            long_term: vec![PlannerEntry::default(), PlannerEntry::default(), PlannerEntry::default()],
+            weekly: vec![PlannerEntry::default(), PlannerEntry::default(), PlannerEntry::default()],
+            daily,
+            reward: String::new(),
+            notes: String::new(),
+        }
+    }
 }

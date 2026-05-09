@@ -10,6 +10,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
             reset_per_section_interactions(state);
         }
         if ui
+            .selectable_label(
+                state.view_mode == crate::todo::state::TodoViewMode::Planner,
+                "周计划",
+            )
+            .clicked()
+        {
+            state.view_mode = crate::todo::state::TodoViewMode::Planner;
+            reset_per_section_interactions(state);
+        }
+        if ui
             .selectable_label(state.view_mode == crate::todo::state::TodoViewMode::Trash, "回收站")
             .clicked()
         {
@@ -53,6 +63,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
             }
         });
         ui.add_space(6.0);
+    }
+
+    if state.view_mode != crate::todo::state::TodoViewMode::Tasks {
+        ui.add_space(8.0);
+        return;
     }
 
     ui.horizontal(|ui| {
