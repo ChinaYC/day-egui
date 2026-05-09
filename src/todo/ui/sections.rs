@@ -39,6 +39,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             use crate::todo::state::TaskSmartView;
 
+            ui.label("快捷视图：");
             if ui
                 .selectable_label(state.smart_view == TaskSmartView::All, "全部")
                 .clicked()
@@ -85,6 +86,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
     }
 
     ui.horizontal(|ui| {
+        ui.label("清单范围：");
         let current = if let Some(section_id) = state.active_section {
             state
                 .section_name(section_id)

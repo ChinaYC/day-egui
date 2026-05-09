@@ -63,6 +63,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         }
 
         ui.add_space(8.0);
+        ui.label("状态：");
         egui::ComboBox::from_id_salt("filter_status")
             .selected_text(match state.filter_status {
                 FilterStatus::All => "全部",
@@ -75,6 +76,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 ui.selectable_value(&mut state.filter_status, FilterStatus::Completed, "已完成");
             });
 
+        ui.label("来源：");
         egui::ComboBox::from_id_salt("filter_automated")
             .selected_text(match state.filter_automated {
                 FilterAutomated::All => "全部",
@@ -95,6 +97,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 );
             });
 
+        ui.label("提醒：");
         egui::ComboBox::from_id_salt("filter_reminder")
             .selected_text(match state.filter_reminder {
                 FilterReminder::All => "全部",
@@ -132,10 +135,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         };
         tags.sort();
 
+        ui.label("标签：");
         ui.menu_button(
             match &state.active_tag {
                 Some(t) => format!("标签：#{t}"),
-                None => "标签：全部".to_string(),
+                None => "全部".to_string(),
             },
             |ui| {
                 if ui.button("全部").clicked() {
@@ -156,6 +160,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             },
         );
 
+        ui.label("排序：");
         egui::ComboBox::from_id_salt("sort_mode")
             .selected_text(match state.sort_mode {
                 SortMode::Manual => "手动排序",
@@ -278,6 +283,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             let response = ui.text_edit_singleline(&mut state.new_task_title);
             ui.label("任务标题 (Title)");
 
+            ui.label("清单：");
             egui::ComboBox::from_id_salt("new_task_section")
                 .selected_text(
                     state
@@ -296,6 +302,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     }
                 });
 
+            ui.label("优先级：");
             egui::ComboBox::from_id_salt("new_task_priority")
                 .selected_text(match state.new_task_priority.min(3) {
                     0 => "P0",
