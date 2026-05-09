@@ -103,9 +103,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     let item = &mut state.items[item_index];
                     let item_id = item.id;
                     let mut drag_handle_response: Option<egui::Response> = None;
-                    let can_interact = state.view_mode == TodoViewMode::Tasks && item.deleted_at.is_none();
-                    let can_drag =
-                        can_interact && state.sort_mode == SortMode::Manual && !state.selection_mode;
+                    let can_interact =
+                        state.view_mode == TodoViewMode::Tasks && item.deleted_at.is_none();
+                    let can_drag = can_interact
+                        && state.sort_mode == SortMode::Manual
+                        && !state.selection_mode;
 
                     ui.vertical(|ui| {
                         let row_response = ui
@@ -177,9 +179,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 } else {
                                     egui::RichText::new(&item.title)
                                 };
-                                let title_response = ui.add(
-                                    egui::Label::new(title_text).sense(egui::Sense::click()),
-                                );
+                                let title_response = ui
+                                    .add(egui::Label::new(title_text).sense(egui::Sense::click()));
                                 if can_interact && title_response.clicked() {
                                     if state.selection_mode {
                                         if state.selected_items.contains(&item_id) {
@@ -199,11 +200,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     2 => ("P2", egui::Color32::LIGHT_BLUE),
                                     _ => ("P3", egui::Color32::GRAY),
                                 };
-                                ui.label(
-                                    egui::RichText::new(p_text)
-                                        .size(10.0)
-                                        .color(p_color),
-                                );
+                                ui.label(egui::RichText::new(p_text).size(10.0).color(p_color));
 
                                 if item.is_automated {
                                     ui.label(
@@ -254,12 +251,15 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                             ui.menu_button("📁", |ui| {
                                                 for folder in &state.folders {
                                                     ui.collapsing(folder.name.clone(), |ui| {
-                                                        for section in state
-                                                            .sections
-                                                            .iter()
-                                                            .filter(|s| s.folder_id == Some(folder.id))
+                                                        for section in
+                                                            state.sections.iter().filter(|s| {
+                                                                s.folder_id == Some(folder.id)
+                                                            })
                                                         {
-                                                            if ui.button(section.name.clone()).clicked() {
+                                                            if ui
+                                                                .button(section.name.clone())
+                                                                .clicked()
+                                                            {
                                                                 moved_section = Some(section.id);
                                                                 ui.close();
                                                             }
@@ -267,7 +267,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                                     });
                                                 }
                                                 ui.separator();
-                                                for section in state.sections.iter().filter(|s| s.folder_id.is_none()) {
+                                                for section in state
+                                                    .sections
+                                                    .iter()
+                                                    .filter(|s| s.folder_id.is_none())
+                                                {
                                                     if ui.button(section.name.clone()).clicked() {
                                                         moved_section = Some(section.id);
                                                         ui.close();
@@ -384,7 +388,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
     }
 }
 
-fn item_matches_filters(state: &TodoState, item: &crate::todo::model::TodoItem, query: &str) -> bool {
+fn item_matches_filters(
+    state: &TodoState,
+    item: &crate::todo::model::TodoItem,
+    query: &str,
+) -> bool {
     match state.view_mode {
         TodoViewMode::Tasks => {
             if item.deleted_at.is_some() {

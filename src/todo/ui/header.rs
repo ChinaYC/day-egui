@@ -189,19 +189,21 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
 
         if ui.button("更改 (Change)").clicked() {
             if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                state.save_folder = Some(folder.to_string_lossy().to_string());
-                state.load_from_file();
+                state.switch_storage_folder(Some(folder.to_string_lossy().to_string()));
                 *state_changed = true;
             }
         }
 
         if state.save_folder.is_some() && ui.button("重置 (Reset)").clicked() {
-            state.save_folder = None;
+            state.switch_storage_folder(None);
             *state_changed = true;
         }
     });
 
-    if state.view_mode == TodoViewMode::Tasks && state.selection_mode && !state.selected_items.is_empty() {
+    if state.view_mode == TodoViewMode::Tasks
+        && state.selection_mode
+        && !state.selected_items.is_empty()
+    {
         let folders: Vec<(uuid::Uuid, String)> = state
             .folders
             .iter()
@@ -228,8 +230,9 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             ui.menu_button("移动到清单", |ui| {
                 for (folder_id, folder_name) in &folders {
                     ui.collapsing(folder_name.clone(), |ui| {
-                        for (section_id, section_name, _folder) in
-                            sections.iter().filter(|(_, _, folder)| *folder == Some(*folder_id))
+                        for (section_id, section_name, _folder) in sections
+                            .iter()
+                            .filter(|(_, _, folder)| *folder == Some(*folder_id))
                         {
                             if ui.button(section_name.clone()).clicked() {
                                 apply_move_section(state, *section_id, state_changed);
@@ -321,7 +324,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             {
                 if !state.new_task_title.trim().is_empty() {
-                    let (title, tags) = parse_title_and_tags(&state.new_task_title, &state.new_task_tags);
+                    let (title, tags) =
+                        parse_title_and_tags(&state.new_task_title, &state.new_task_tags);
                     let desc = if state.new_task_description.trim().is_empty() {
                         None
                     } else {
@@ -347,11 +351,9 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     let reminder_at = if state.new_task_reminder.trim().is_empty() {
                         None
                     } else {
-                        let Some(parsed) =
-                            crate::todo::reminders::parse_local_datetime_to_utc(
-                                &state.new_task_reminder,
-                            )
-                        else {
+                        let Some(parsed) = crate::todo::reminders::parse_local_datetime_to_utc(
+                            &state.new_task_reminder,
+                        ) else {
                             state.new_task_error_msg =
                                 Some("提醒时间格式应为 YYYY-MM-DD HH:MM".to_string());
                             return;

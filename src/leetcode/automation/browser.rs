@@ -45,9 +45,12 @@ pub fn wait_for_element_with_text<'a>(
             return Err(anyhow::anyhow!("已手动停止 (Stopped by user)"));
         }
         if start.elapsed() > timeout {
-            return Err(anyhow::anyhow!("Timeout waiting for element with text: {}", text));
+            return Err(anyhow::anyhow!(
+                "Timeout waiting for element with text: {}",
+                text
+            ));
         }
-        
+
         let script = format!(
             r#"
             (function() {{
@@ -63,15 +66,16 @@ pub fn wait_for_element_with_text<'a>(
             selector.replace('`', "\\`"),
             text.replace('`', "\\`")
         );
-        
-        let found = tab.evaluate(&script, false)
+
+        let found = tab
+            .evaluate(&script, false)
             .map(|v| v.value.and_then(|val| val.as_bool()).unwrap_or(false))
             .unwrap_or(false);
-            
+
         if found {
             return Ok(());
         }
-        
+
         std::thread::sleep(Duration::from_millis(500));
     }
 }

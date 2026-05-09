@@ -88,11 +88,16 @@ impl TodoItem {
     }
 
     pub fn reminder_at_local_string(&self) -> Option<String> {
-        self.reminder_at.map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string())
+        self.reminder_at.map(|utc| {
+            utc.with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M")
+                .to_string()
+        })
     }
 
     pub fn due_at_local_string(&self) -> Option<String> {
-        self.due_at.map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d").to_string())
+        self.due_at
+            .map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d").to_string())
     }
 
     pub fn priority_label(&self) -> &'static str {
@@ -214,12 +219,24 @@ impl Default for TodoPlanner {
     fn default() -> Self {
         let mut daily: Vec<Vec<PlannerEntry>> = Vec::new();
         for _ in 0..7 {
-            daily.push(vec![PlannerEntry::default(), PlannerEntry::default(), PlannerEntry::default()]);
+            daily.push(vec![
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+            ]);
         }
         Self {
             date: String::new(),
-            long_term: vec![PlannerEntry::default(), PlannerEntry::default(), PlannerEntry::default()],
-            weekly: vec![PlannerEntry::default(), PlannerEntry::default(), PlannerEntry::default()],
+            long_term: vec![
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+            ],
+            weekly: vec![
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+            ],
             daily,
             reward: String::new(),
             notes: String::new(),

@@ -1,11 +1,11 @@
-mod header;
 mod editor;
+mod header;
 mod list;
 mod planner;
 mod reminder;
-mod snackbar;
 mod sections;
 mod settings;
+mod snackbar;
 
 use super::TodoState;
 
@@ -91,7 +91,10 @@ impl TodoState {
                     if let Some(pos) = self.items.iter().position(|i| i.id == item_id) {
                         let item = self.items.remove(pos);
                         self.undo_stack
-                            .push(crate::todo::state::UndoAction::ReinsertItem { index: pos, item });
+                            .push(crate::todo::state::UndoAction::ReinsertItem {
+                                index: pos,
+                                item,
+                            });
                         self.show_snackbar("已彻底删除");
                         self.selected_items.remove(&item_id);
                         state_changed = true;

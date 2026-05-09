@@ -18,12 +18,14 @@ pub fn setup_fonts(ctx: &egui::Context) {
             "Microsoft YaHei",  // Windows 默认微软雅黑
             "SimHei",           // Windows 黑体
             "Noto Sans CJK SC", // Linux 常见中文字体
-            "WenQuanYi Micro Hei", 
+            "WenQuanYi Micro Hei",
         ];
 
         let mut data = None;
         for name in font_names {
-            if let Ok(handle) = source.select_best_match(&[FamilyName::Title(name.to_string())], &Properties::new()) {
+            if let Ok(handle) =
+                source.select_best_match(&[FamilyName::Title(name.to_string())], &Properties::new())
+            {
                 match handle {
                     font_kit::handle::Handle::Path { path, .. } => {
                         if let Ok(bytes) = std::fs::read(&path) {
@@ -40,7 +42,7 @@ pub fn setup_fonts(ctx: &egui::Context) {
         }
         data
     };
-    
+
     #[cfg(any(target_os = "android", target_arch = "wasm32"))]
     let font_data: Option<Vec<u8>> = None; // Android / Wasm 下暂时不动态加载系统字体，使用 egui 默认或内嵌字体
 

@@ -96,10 +96,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     ui.label(folder_name);
                     if ui.button("重命名").clicked() {
                         state.folder_to_rename = Some(folder_id);
-                        state.folder_rename_input = state
-                            .folder_name(folder_id)
-                            .unwrap_or_default()
-                            .to_string();
+                        state.folder_rename_input =
+                            state.folder_name(folder_id).unwrap_or_default().to_string();
                         state.folder_manage_error_msg = None;
                     }
                     if ui.button("删除").clicked() {
@@ -159,7 +157,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             }
                         });
                     if folder_id != section_folder {
-                        if let Some(section) = state.sections.iter_mut().find(|s| s.id == section_id)
+                        if let Some(section) =
+                            state.sections.iter_mut().find(|s| s.id == section_id)
                         {
                             section.folder_id = folder_id;
                             *state_changed = true;
@@ -195,6 +194,24 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             ui.add_space(8.0);
 
             ui.label("数据工具 (Data tools):");
+            if let Some(folder) = state.get_save_folder_path() {
+                ui.horizontal(|ui| {
+                    ui.label("数据目录：");
+                    let folder_str = folder.to_string_lossy().to_string();
+                    ui.label(
+                        egui::RichText::new(folder_str.clone()).color(egui::Color32::LIGHT_BLUE),
+                    );
+                    if ui.button("复制路径").clicked() {
+                        ui.ctx().copy_text(folder_str);
+                        state.show_snackbar("已复制路径");
+                    }
+                });
+                ui.add_space(4.0);
+            } else {
+                ui.label("数据目录：Web 版本暂无本地目录");
+                ui.add_space(4.0);
+            }
+
             ui.horizontal(|ui| {
                 if ui.button("导出任务 JSONL").clicked() {
                     if let Some(path) = state.export_jsonl(false) {
@@ -213,6 +230,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             state.show_snackbar("已导出");
                         }
                     }
+                }
+                if ui.button("导出提醒 reminders.ics").clicked() {
+                    super::super::reminders::write_reminders_ics(state);
+                    state.show_snackbar("已导出 reminders.ics");
                 }
             });
         });
@@ -247,11 +268,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             state.section_manage_error_msg = Some("分区名称不能为空".to_string());
                             return;
                         }
-                        if state.sections.iter().any(|s| s.id != section_id && s.name == name) {
+                        if state
+                            .sections
+                            .iter()
+                            .any(|s| s.id != section_id && s.name == name)
+                        {
                             state.section_manage_error_msg = Some("分区名称已存在".to_string());
                             return;
                         }
-                        if let Some(section) = state.sections.iter_mut().find(|s| s.id == section_id)
+                        if let Some(section) =
+                            state.sections.iter_mut().find(|s| s.id == section_id)
                         {
                             section.name = name;
                             *state_changed = true;
@@ -293,7 +319,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             if section.id == section_id {
                                 continue;
                             }
-                            ui.selectable_value(&mut move_to, Some(section.id), section.name.clone());
+                            ui.selectable_value(
+                                &mut move_to,
+                                Some(section.id),
+                                section.name.clone(),
+                            );
                         }
                     });
                 state.section_delete_move_to = move_to;
@@ -314,7 +344,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             return;
                         };
                         if move_to == section_id {
-                            state.section_manage_error_msg = Some("迁移目标不能是当前分区".to_string());
+                            state.section_manage_error_msg =
+                                Some("迁移目标不能是当前分区".to_string());
                             return;
                         }
 
@@ -377,7 +408,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             state.folder_manage_error_msg = Some("文件夹名称不能为空".to_string());
                             return;
                         }
-                        if state.folders.iter().any(|f| f.id != folder_id && f.name == name) {
+                        if state
+                            .folders
+                            .iter()
+                            .any(|f| f.id != folder_id && f.name == name)
+                        {
                             state.folder_manage_error_msg = Some("文件夹名称已存在".to_string());
                             return;
                         }

@@ -1,7 +1,7 @@
 use egui::{Color32, CornerRadius, Margin, Pos2, Rect, Stroke, Vec2};
 
-use super::super::model::{PlannerEntry, TodoPlanner};
 use super::super::TodoState;
+use super::super::model::{PlannerEntry, TodoPlanner};
 
 pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) {
     normalize_planner(&mut state.planner);
@@ -52,23 +52,24 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     .size(18.0)
                                     .color(accent),
                             );
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new("日期：")
-                                            .strong()
-                                            .color(accent),
-                                    );
-                                    let r = ui.add(
-                                        egui::TextEdit::singleline(&mut state.planner.date)
-                                            .hint_text("**** / ** / **")
-                                            .desired_width(140.0),
-                                    );
-                                    if r.changed() {
-                                        *state_changed = true;
-                                    }
-                                });
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("日期：").strong().color(accent),
+                                        );
+                                        let r = ui.add(
+                                            egui::TextEdit::singleline(&mut state.planner.date)
+                                                .hint_text("**** / ** / **")
+                                                .desired_width(140.0),
+                                        );
+                                        if r.changed() {
+                                            *state_changed = true;
+                                        }
+                                    });
+                                },
+                            );
                         });
                         ui.add_space(8.0);
 
@@ -76,8 +77,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             ui.horizontal(|ui| {
                                 number_badge(ui, i + 1, accent, border);
                                 let r = ui.add(
-                                    egui::TextEdit::singleline(&mut state.planner.long_term[i].text)
-                                        .desired_width(ui.available_width()),
+                                    egui::TextEdit::singleline(
+                                        &mut state.planner.long_term[i].text,
+                                    )
+                                    .desired_width(ui.available_width()),
                                 );
                                 if r.changed() {
                                     *state_changed = true;
@@ -238,14 +241,7 @@ fn dashed_round_rect(
     );
 }
 
-fn dashed_line(
-    painter: &egui::Painter,
-    from: Pos2,
-    to: Pos2,
-    stroke: Stroke,
-    dash: f32,
-    gap: f32,
-) {
+fn dashed_line(painter: &egui::Painter, from: Pos2, to: Pos2, stroke: Stroke, dash: f32, gap: f32) {
     let delta = to - from;
     let len = delta.length();
     if len <= 0.01 {
@@ -303,7 +299,10 @@ fn render_days(
 
     let mut blocks: Vec<DayBlock<'_>> = Vec::new();
     for (idx, label) in labels.iter().enumerate() {
-        blocks.push(DayBlock::Day { index: idx, title: *label });
+        blocks.push(DayBlock::Day {
+            index: idx,
+            title: *label,
+        });
     }
     blocks.push(DayBlock::Reward);
     blocks.push(DayBlock::Notes);
@@ -317,8 +316,8 @@ fn render_days(
                 if i >= blocks.len() {
                     break;
                 }
-                let w = (ui.available_width() - 12.0 * (cols.saturating_sub(1) as f32))
-                    / cols as f32;
+                let w =
+                    (ui.available_width() - 12.0 * (cols.saturating_sub(1) as f32)) / cols as f32;
                 ui.set_min_width(w);
                 match blocks[i] {
                     DayBlock::Day { index, title } => {

@@ -1,6 +1,6 @@
+use super::daily::add_log;
 use anyhow::Result;
 use headless_chrome::{Browser, Tab};
-use super::daily::add_log;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -21,7 +21,7 @@ fn wait_for_element(tab: &Tab, selector: &str, timeout: Duration) -> Result<()> 
             .value
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-    
+
         if exists {
             return Ok(());
         }
@@ -29,7 +29,11 @@ fn wait_for_element(tab: &Tab, selector: &str, timeout: Duration) -> Result<()> 
     }
 }
 
-pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_flag: &Arc<std::sync::atomic::AtomicBool>) -> Result<Arc<Tab>> {
+pub fn ensure_login(
+    browser: &Browser,
+    logs: &Arc<Mutex<Vec<String>>>,
+    cancel_flag: &Arc<std::sync::atomic::AtomicBool>,
+) -> Result<Arc<Tab>> {
     // 智能获取初始标签页，优先寻找空白页 (about:blank) 进行复用，避免多出多余的空窗口
     let tab = {
         let mut target_tab = None;
@@ -49,10 +53,12 @@ pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_fl
         }
         target_tab.unwrap_or_else(|| {
             let tabs = browser.get_tabs().lock().unwrap().clone();
-            tabs.last().cloned().unwrap_or_else(|| browser.new_tab().unwrap())
+            tabs.last()
+                .cloned()
+                .unwrap_or_else(|| browser.new_tab().unwrap())
         })
     };
-    
+
     add_log(logs, "等待页面加载... (Waiting for page load)");
     // 忽略导航过程中的网络错误，有时候部分资源加载失败会报错但页面其实已经出来了
     let _ = tab.navigate_to("https://leetcode.cn/");
@@ -70,18 +76,18 @@ pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_fl
             }
         })();
         "#,
-        false
+        false,
     );
 
     add_log(logs, "检查是否需要登录... (Checking login status)");
-    let timeout = Duration::from_secs(300); 
+    let timeout = Duration::from_secs(300);
     let start = std::time::Instant::now();
-    
+
     loop {
         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
             return Err(anyhow::anyhow!("已手动停止 (Stopped by user)"));
         }
-        
+
         if start.elapsed() > timeout {
             return Err(anyhow::anyhow!("登录超时 (Login timeout)"));
         }
@@ -117,6 +123,9 @@ pub fn ensure_login(browser: &Browser, logs: &Arc<Mutex<Vec<String>>>, cancel_fl
         }
 
         std::thread::sleep(Duration::from_secs(2));
-        add_log(logs, "请在弹出的浏览器中完成登录... (Please log in via the browser window...)");
+        add_log(
+            logs,
+            "请在弹出的浏览器中完成登录... (Please log in via the browser window...)",
+        );
     }
 }

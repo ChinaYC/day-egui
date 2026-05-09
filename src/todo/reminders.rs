@@ -2,7 +2,7 @@ use std::io::Write;
 
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};
 
-use super::{notifications, TodoState};
+use super::{TodoState, notifications};
 
 pub fn parse_local_datetime_to_utc(input: &str) -> Option<DateTime<Utc>> {
     let naive = NaiveDateTime::parse_from_str(input.trim(), "%Y-%m-%d %H:%M").ok()?;

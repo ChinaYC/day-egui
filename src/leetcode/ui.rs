@@ -1,7 +1,7 @@
 use super::state::LeetCodeState;
-use std::thread;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 impl LeetCodeState {
     pub fn ui(&mut self, ui: &mut egui::Ui, todo_state: &crate::todo::TodoState) {
@@ -14,35 +14,42 @@ impl LeetCodeState {
         }
 
         // 如果 Todo 中已有今天的自动化任务，或者当前状态本身就是已打卡，说明今天打过卡了
-        let already_checked_in_today = 
-            self.checkin_status.contains("已打卡") || 
-            todo_state.has_today_automated_task("LeetCode");
-            
+        let already_checked_in_today = self.checkin_status.contains("已打卡")
+            || todo_state.has_today_automated_task("LeetCode");
+
         // 如果发现 Todo 里有但当前状态没有更新，自动更正状态（通常是在重启应用后发生）
         if already_checked_in_today && !self.checkin_status.contains("已打卡") {
             self.checkin_status = "今日已打卡 (从 Todo 清单恢复)".to_string();
             self.checkin_date = today.clone();
         }
-        
+
         let is_running_now = *self.is_running.lock().unwrap_or_else(|e| e.into_inner());
 
         // 自动打卡逻辑
-        if self.auto_checkin && !already_checked_in_today && !self.has_attempted_auto_checkin && !is_running_now {
+        if self.auto_checkin
+            && !already_checked_in_today
+            && !self.has_attempted_auto_checkin
+            && !is_running_now
+        {
             self.has_attempted_auto_checkin = true;
             self.start_checkin(ui.ctx());
         }
-        
+
         ui.heading("LeetCode 每日打卡 (LeetCode Daily Check-in)");
-        
+
         #[cfg(any(target_os = "android", target_os = "ios", target_arch = "wasm32"))]
         {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("⚠️ 注意：自动打卡功能目前仅支持桌面端版本 (Desktop version only)")
+            ui.label(
+                egui::RichText::new(
+                    "⚠️ 注意：自动打卡功能目前仅支持桌面端版本 (Desktop version only)",
+                )
                 .color(egui::Color32::RED)
                 .strong()
-                .size(14.0));
+                .size(14.0),
+            );
         }
-        
+
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.label("题目名称 (Problem Title):");
@@ -59,8 +66,14 @@ impl LeetCodeState {
             } else {
                 egui::Color32::RED
             };
-            ui.label(egui::RichText::new(if self.checkin_status.is_empty() { "待检测" } else { &self.checkin_status })
-                .color(color));
+            ui.label(
+                egui::RichText::new(if self.checkin_status.is_empty() {
+                    "待检测"
+                } else {
+                    &self.checkin_status
+                })
+                .color(color),
+            );
         });
 
         ui.add_space(4.0);
@@ -71,25 +84,28 @@ impl LeetCodeState {
 
         ui.add_space(8.0);
         ui.label("解答代码 (Solution Code):");
-        egui::ScrollArea::vertical().id_salt("leetcode_code_scroll").max_height(300.0).show(ui, |ui| {
-            let mut code = self.solution_code.lock().unwrap_or_else(|e| e.into_inner());
-            ui.add(
-                egui::TextEdit::multiline(&mut *code)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(15),
-            );
-        });
+        egui::ScrollArea::vertical()
+            .id_salt("leetcode_code_scroll")
+            .max_height(300.0)
+            .show(ui, |ui| {
+                let mut code = self.solution_code.lock().unwrap_or_else(|e| e.into_inner());
+                ui.add(
+                    egui::TextEdit::multiline(&mut *code)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(15),
+                );
+            });
 
         ui.add_space(16.0);
         ui.horizontal(|ui| {
             let is_running = is_running_now;
             let button_width = ui.available_width() * 0.4;
-            
+
             if is_running {
                 let btn = egui::Button::new(egui::RichText::new("⏹ 停止 (Stop)").size(16.0).color(egui::Color32::RED))
                     .min_size(egui::vec2(button_width, 30.0));
-                    
+
                 if ui.add(btn).clicked() {
                     self.cancel_flag.store(true, Ordering::Relaxed);
                     let mut logs = self.logs.lock().unwrap();
@@ -101,13 +117,13 @@ impl LeetCodeState {
                 let mut btn = egui::Button::new(egui::RichText::new("🚀 开始打卡 (Start Check-in)").size(16.0))
                     .min_size(egui::vec2(button_width, 30.0))
                     .sense(egui::Sense::click());
-                
+
                 #[cfg(any(target_os = "android", target_os = "ios", target_arch = "wasm32"))]
                 {
                     btn = egui::Button::new(egui::RichText::new("⚠️ 仅限桌面端 (Desktop Only)").size(16.0))
                         .min_size(egui::vec2(button_width, 30.0));
                 }
-                
+
                 //根据ENABLE_CHECKIN_LIMIT判断是否启用打卡按钮
                 #[allow(unused_mut)]
                 let mut button_chickin_enabled = if ENABLE_CHECKIN_LIMIT {
@@ -115,14 +131,14 @@ impl LeetCodeState {
                 } else {
                     true
                 };
-                
+
                 #[cfg(any(target_os = "android", target_os = "ios", target_arch = "wasm32"))]
                 {
                     button_chickin_enabled = false;
                 }
-                
+
                 let response = ui.add_enabled(button_chickin_enabled, btn);
-                
+
                 if ENABLE_CHECKIN_LIMIT&&already_checked_in_today {
                     // 我们只保留手动跟随鼠标的 Fallback Tooltip，移除可能造成重影的默认 hover_text
                     if response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
@@ -133,7 +149,7 @@ impl LeetCodeState {
                             });
                     }
                 }
-                
+
                 if response.clicked() {
                     self.start_checkin(ui.ctx());
                 }
@@ -141,11 +157,11 @@ impl LeetCodeState {
 
             ui.add_space(8.0);
             ui.checkbox(&mut self.auto_checkin, "自动打卡");
-            
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let copy_btn = egui::Button::new("📋 复制答案 (Copy Answer)").min_size(egui::vec2(180.0, 30.0)).sense(egui::Sense::click());
                 let copy_response = ui.add(copy_btn);
-                
+
                 if copy_response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
                     #[allow(deprecated)]
                     egui::Tooltip::new(copy_response.id.with("fallback"), ui.ctx().clone(), egui::PopupAnchor::Pointer, ui.layer_id())
@@ -165,17 +181,28 @@ impl LeetCodeState {
         if !logs.is_empty() {
             ui.add_space(8.0);
             ui.label("执行日志 (Run Logs):");
-            egui::ScrollArea::vertical().id_salt("leetcode_logs_scroll").max_height(100.0).stick_to_bottom(true).show(ui, |ui| {
-                for log in logs {
-                    ui.label(egui::RichText::new(log).color(egui::Color32::LIGHT_BLUE));
-                }
-            });
+            egui::ScrollArea::vertical()
+                .id_salt("leetcode_logs_scroll")
+                .max_height(100.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    for log in logs {
+                        ui.label(egui::RichText::new(log).color(egui::Color32::LIGHT_BLUE));
+                    }
+                });
         }
 
-        let last_sub = self.last_submitted.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let last_sub = self
+            .last_submitted
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if let Some(time) = last_sub {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new(format!("最后提交时间 (Last Submitted): {}", time)).color(egui::Color32::LIGHT_GREEN));
+            ui.label(
+                egui::RichText::new(format!("最后提交时间 (Last Submitted): {}", time))
+                    .color(egui::Color32::LIGHT_GREEN),
+            );
         }
     }
 
@@ -186,13 +213,13 @@ impl LeetCodeState {
         let last_submitted_clone = Arc::clone(&self.last_submitted);
         let cancel_flag_clone = Arc::clone(&self.cancel_flag);
         let browser_instance_clone = Arc::clone(&self.browser_instance);
-        
+
         // We need to pass back strings to the UI state safely across threads
         // using Arc<Mutex<String>> wrapper for problem_title and checkin_status
         let problem_title_ref = Arc::new(Mutex::new(self.problem_title.clone()));
         let checkin_status_ref = Arc::new(Mutex::new(self.checkin_status.clone()));
         let daily_problem_url_ref = Arc::new(Mutex::new(self.daily_problem_url.clone()));
-        
+
         let problem_title_clone = Arc::clone(&problem_title_ref);
         let checkin_status_clone = Arc::clone(&checkin_status_ref);
         let daily_problem_url_clone = Arc::clone(&daily_problem_url_ref);
@@ -224,11 +251,11 @@ impl LeetCodeState {
         #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
         thread::spawn(move || {
             use crate::leetcode::automation;
-            
+
             let logs_for_automation = Arc::clone(&logs_clone);
             match automation::run_daily_flow(
-                logs_for_automation, 
-                cancel_flag_clone, 
+                logs_for_automation,
+                cancel_flag_clone,
                 browser_instance_clone,
                 problem_title_clone.clone(),
                 checkin_status_clone.clone(),
@@ -236,22 +263,37 @@ impl LeetCodeState {
             ) {
                 Ok(code) => {
                     // Sync back
-                    if let (Ok(title), Ok(status), Ok(url)) = (problem_title_clone.lock(), checkin_status_clone.lock(), daily_problem_url_clone.lock()) {
-                        *sync_status_clone.lock().unwrap() = format!("SYNC:|{}|{}|{}", *title, *status, *url);
+                    if let (Ok(title), Ok(status), Ok(url)) = (
+                        problem_title_clone.lock(),
+                        checkin_status_clone.lock(),
+                        daily_problem_url_clone.lock(),
+                    ) {
+                        *sync_status_clone.lock().unwrap() =
+                            format!("SYNC:|{}|{}|{}", *title, *status, *url);
                     }
                     if !code.is_empty() {
                         *code_clone.lock().unwrap() = code.clone();
                     }
                     let mut logs = logs_clone.lock().unwrap();
                     let now = chrono::Local::now().format("%H:%M:%S").to_string();
-                    logs.push(format!("[{}] 成功 (Success)! 代码长度: {}", now, code.len()));
-                    
-                    *last_submitted_clone.lock().unwrap() = Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
+                    logs.push(format!(
+                        "[{}] 成功 (Success)! 代码长度: {}",
+                        now,
+                        code.len()
+                    ));
+
+                    *last_submitted_clone.lock().unwrap() =
+                        Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
                 }
                 Err(e) => {
                     // Sync back
-                    if let (Ok(title), Ok(status), Ok(url)) = (problem_title_clone.lock(), checkin_status_clone.lock(), daily_problem_url_clone.lock()) {
-                        *sync_status_clone.lock().unwrap() = format!("SYNC:|{}|{}|{}", *title, *status, *url);
+                    if let (Ok(title), Ok(status), Ok(url)) = (
+                        problem_title_clone.lock(),
+                        checkin_status_clone.lock(),
+                        daily_problem_url_clone.lock(),
+                    ) {
+                        *sync_status_clone.lock().unwrap() =
+                            format!("SYNC:|{}|{}|{}", *title, *status, *url);
                     }
                     let mut logs = logs_clone.lock().unwrap();
                     let now = chrono::Local::now().format("%H:%M:%S").to_string();
@@ -259,16 +301,19 @@ impl LeetCodeState {
                 }
             }
             *is_running_clone.lock().unwrap() = false;
-            
+
             // 强制刷新 UI 使得能够立即响应 SYNC 并添加到 Todo
             ctx_clone.request_repaint();
         });
-        
+
         #[cfg(any(target_arch = "wasm32", target_os = "android"))]
         {
             let mut logs = logs_clone.lock().unwrap();
             let now = chrono::Local::now().format("%H:%M:%S").to_string();
-            logs.push(format!("[{}] 此平台暂不支持自动化操作 (Automation not supported on this platform)", now));
+            logs.push(format!(
+                "[{}] 此平台暂不支持自动化操作 (Automation not supported on this platform)",
+                now
+            ));
             *is_running_clone.lock().unwrap() = false;
         }
     }

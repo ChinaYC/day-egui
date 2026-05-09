@@ -21,9 +21,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 .inner_margin(egui::Margin::symmetric(12, 8))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(message.as_str()).color(egui::Color32::WHITE),
-                        );
+                        ui.label(egui::RichText::new(message.as_str()).color(egui::Color32::WHITE));
                         ui.add_space(12.0);
                         if ui
                             .add_enabled(

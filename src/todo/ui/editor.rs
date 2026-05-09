@@ -53,11 +53,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             .and_then(|fid| state.folder_name(fid).map(|f| f.to_string()))
                             .map(|f| format!("{f} / {}", section.name))
                             .unwrap_or_else(|| section.name.clone());
-                        ui.selectable_value(
-                            &mut state.edit_section_input,
-                            Some(section.id),
-                            label,
-                        );
+                        ui.selectable_value(&mut state.edit_section_input, Some(section.id), label);
                     }
                 });
 
@@ -146,7 +142,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             return;
                         };
                         if parsed <= chrono::Utc::now() {
-                            state.edit_error_msg = Some("提醒时间已过去，请设置未来时间".to_string());
+                            state.edit_error_msg =
+                                Some("提醒时间已过去，请设置未来时间".to_string());
                             return;
                         }
                         Some(parsed)

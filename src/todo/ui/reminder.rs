@@ -6,9 +6,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
     };
 
     let item = state.items.iter().find(|i| i.id == item_id);
-    let item_title = item
-        .map(|i| i.title.clone())
-        .unwrap_or_default();
+    let item_title = item.map(|i| i.title.clone()).unwrap_or_default();
     let item_completed = item.map(|i| i.completed).unwrap_or(false);
 
     let mut open = true;

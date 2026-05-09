@@ -3,7 +3,10 @@ use super::super::TodoState;
 pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         if ui
-            .selectable_label(state.view_mode == crate::todo::state::TodoViewMode::Tasks, "任务")
+            .selectable_label(
+                state.view_mode == crate::todo::state::TodoViewMode::Tasks,
+                "任务",
+            )
             .clicked()
         {
             state.view_mode = crate::todo::state::TodoViewMode::Tasks;
@@ -24,7 +27,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
             reset_per_section_interactions(state);
         }
         if ui
-            .selectable_label(state.view_mode == crate::todo::state::TodoViewMode::Trash, "回收站")
+            .selectable_label(
+                state.view_mode == crate::todo::state::TodoViewMode::Trash,
+                "回收站",
+            )
             .clicked()
         {
             state.view_mode = crate::todo::state::TodoViewMode::Trash;
@@ -134,8 +140,9 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
                         reset_per_section_interactions(state);
                         ui.close();
                     }
-                    for (section_id, section_name, _folder) in
-                        sections.iter().filter(|(_, _, folder)| *folder == Some(*folder_id))
+                    for (section_id, section_name, _folder) in sections
+                        .iter()
+                        .filter(|(_, _, folder)| *folder == Some(*folder_id))
                     {
                         if ui.button(section_name.clone()).clicked() {
                             state.active_section = Some(*section_id);
