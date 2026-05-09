@@ -24,6 +24,10 @@ pub struct TodoItem {
     #[serde(default)]
     pub due_at: Option<DateTime<Utc>>,
 
+    // 优先级：0(P0最高) ~ 3(P3最低)
+    #[serde(default = "default_priority")]
+    pub priority: u8,
+
     // 回收站：软删除后会带上删除时间；列表默认隐藏，回收站视图可恢复/彻底删除。
     #[serde(default)]
     pub deleted_at: Option<DateTime<Utc>>,
@@ -47,6 +51,7 @@ impl TodoItem {
             reminder_at: None,
             reminder_sent: false,
             due_at: None,
+            priority: default_priority(),
             deleted_at: None,
             is_automated: false,
             automated_source: None,
@@ -69,6 +74,7 @@ impl TodoItem {
             reminder_at: None,
             reminder_sent: false,
             due_at: None,
+            priority: 3,
             deleted_at: None,
             is_automated: true,
             automated_source: Some(source),
@@ -83,6 +89,19 @@ impl TodoItem {
     pub fn due_at_local_string(&self) -> Option<String> {
         self.due_at.map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d").to_string())
     }
+
+    pub fn priority_label(&self) -> &'static str {
+        match self.priority.min(3) {
+            0 => "P0",
+            1 => "P1",
+            2 => "P2",
+            _ => "P3",
+        }
+    }
+}
+
+fn default_priority() -> u8 {
+    2
 }
 
 #[derive(Serialize, Deserialize, Clone)]

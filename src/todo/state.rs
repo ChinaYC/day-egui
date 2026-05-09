@@ -38,6 +38,12 @@ pub enum FilterReminder {
     WithoutReminder,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SortMode {
+    Manual,
+    Priority,
+}
+
 #[derive(Clone)]
 pub enum UndoAction {
     ReplaceItem { id: Uuid, before: TodoItem },
@@ -100,6 +106,8 @@ pub struct TodoState {
     #[serde(skip)]
     pub edit_reminder_input: String,
     #[serde(skip)]
+    pub edit_priority_input: u8,
+    #[serde(skip)]
     pub edit_error_msg: Option<String>,
 
     #[serde(skip)]
@@ -114,12 +122,16 @@ pub struct TodoState {
     pub filter_automated: FilterAutomated,
     #[serde(skip)]
     pub filter_reminder: FilterReminder,
+    #[serde(skip)]
+    pub sort_mode: SortMode,
 
     #[serde(skip)]
     pub undo_stack: Vec<UndoAction>,
 
     #[serde(skip)]
     pub new_task_error_msg: Option<String>,
+    #[serde(skip)]
+    pub new_task_priority: u8,
 
     #[serde(skip)]
     pub section_to_rename: Option<Uuid>,
@@ -171,6 +183,7 @@ impl Default for TodoState {
             edit_section_input: None,
             edit_due_input: String::new(),
             edit_reminder_input: String::new(),
+            edit_priority_input: 2,
             edit_error_msg: None,
             view_mode: TodoViewMode::Tasks,
             smart_view: TaskSmartView::All,
@@ -178,8 +191,10 @@ impl Default for TodoState {
             filter_status: FilterStatus::All,
             filter_automated: FilterAutomated::All,
             filter_reminder: FilterReminder::All,
+            sort_mode: SortMode::Manual,
             undo_stack: Vec::new(),
             new_task_error_msg: None,
+            new_task_priority: 2,
             section_to_rename: None,
             section_rename_input: String::new(),
             section_to_delete: None,

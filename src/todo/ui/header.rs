@@ -1,4 +1,4 @@
-use crate::todo::state::{FilterAutomated, FilterReminder, FilterStatus};
+use crate::todo::state::{FilterAutomated, FilterReminder, FilterStatus, SortMode};
 
 use super::super::{TodoItem, TodoState};
 
@@ -93,11 +93,22 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 );
             });
 
+        egui::ComboBox::from_id_salt("sort_mode")
+            .selected_text(match state.sort_mode {
+                SortMode::Manual => "手动排序",
+                SortMode::Priority => "按优先级",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.sort_mode, SortMode::Manual, "手动排序");
+                ui.selectable_value(&mut state.sort_mode, SortMode::Priority, "按优先级");
+            });
+
         if ui.button("重置筛选").clicked() {
             state.search_query.clear();
             state.filter_status = FilterStatus::All;
             state.filter_automated = FilterAutomated::All;
             state.filter_reminder = FilterReminder::All;
+            state.sort_mode = SortMode::Manual;
         }
 
         ui.label("📁 保存位置 (Save Location):");
@@ -151,6 +162,20 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     }
                 });
 
+            egui::ComboBox::from_id_salt("new_task_priority")
+                .selected_text(match state.new_task_priority.min(3) {
+                    0 => "P0",
+                    1 => "P1",
+                    2 => "P2",
+                    _ => "P3",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut state.new_task_priority, 0, "P0");
+                    ui.selectable_value(&mut state.new_task_priority, 1, "P1");
+                    ui.selectable_value(&mut state.new_task_priority, 2, "P2");
+                    ui.selectable_value(&mut state.new_task_priority, 3, "P3");
+                });
+
             if ui.button("➕ 添加任务 (Add Task)").clicked()
                 || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             {
@@ -200,6 +225,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     item.due_at = due_at;
                     item.reminder_at = reminder_at;
                     item.reminder_sent = item.reminder_at.is_none();
+                    item.priority = state.new_task_priority.min(3);
                     state.items.push(item);
                     state.new_task_title.clear();
                     state.new_task_description.clear();

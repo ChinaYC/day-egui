@@ -1,6 +1,8 @@
 use uuid::Uuid;
 
-use crate::todo::state::{FilterAutomated, FilterReminder, FilterStatus, TaskSmartView, TodoViewMode};
+use crate::todo::state::{
+    FilterAutomated, FilterReminder, FilterStatus, SortMode, TaskSmartView, TodoViewMode,
+};
 
 use super::super::TodoState;
 
@@ -26,6 +28,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
     if state.dragging_item.is_none() {
         state.drag_target_index = None;
         state.dragging_section = None;
+    }
+    if state.sort_mode != SortMode::Manual {
+        state.dragging_item = None;
+        state.dragging_section = None;
+        state.drag_target_index = None;
     }
 
     if state.view_mode == TodoViewMode::Trash {
@@ -99,12 +106,23 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         Some(i)
                     })
                     .collect();
+                let mut indices = indices;
+                if state.sort_mode == SortMode::Priority && state.view_mode == TodoViewMode::Tasks {
+                    indices.sort_by_key(|&i| {
+                        let item = &state.items[i];
+                        let completed = if item.completed { 1u8 } else { 0u8 };
+                        let p = item.priority.min(3);
+                        let due_ts = item.due_at.map(|d| d.timestamp()).unwrap_or(i64::MAX);
+                        (completed, p, due_ts, i)
+                    });
+                }
 
                 for (visible_index, item_index) in indices.iter().copied().enumerate() {
                     let item = &mut state.items[item_index];
                     let item_id = item.id;
                     let mut drag_handle_response: Option<egui::Response> = None;
                     let can_interact = state.view_mode == TodoViewMode::Tasks && item.deleted_at.is_none();
+                    let can_drag = can_interact && state.sort_mode == SortMode::Manual;
 
                     ui.vertical(|ui| {
                         let row_response = ui
@@ -115,7 +133,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
 
                                 drag_handle_response = Some(
                                     ui.add_enabled(
-                                        can_interact,
+                                        can_drag,
                                         egui::Label::new(
                                             egui::RichText::new("≡")
                                                 .size(14.0)
@@ -125,7 +143,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     ),
                                 );
 
-                                if can_interact {
+                                if can_drag {
                                     if let Some(drag_handle_response) = &drag_handle_response {
                                         if drag_handle_response.drag_started() {
                                             state.dragging_item = Some(item_id);
@@ -173,6 +191,19 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 if can_interact && title_response.clicked() {
                                     open_editor_for = Some(item_id);
                                 }
+
+                                let p = item.priority.min(3);
+                                let (p_text, p_color) = match p {
+                                    0 => ("P0", egui::Color32::LIGHT_RED),
+                                    1 => ("P1", egui::Color32::from_rgb(255, 180, 80)),
+                                    2 => ("P2", egui::Color32::LIGHT_BLUE),
+                                    _ => ("P3", egui::Color32::GRAY),
+                                };
+                                ui.label(
+                                    egui::RichText::new(p_text)
+                                        .size(10.0)
+                                        .color(p_color),
+                                );
 
                                 if item.is_automated {
                                     ui.label(
@@ -276,7 +307,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             .response;
 
                         // contains_pointer() 在拖拽中比 hovered() 更可靠（hovered 可能被拖拽控件“抢占”）。
-                        if can_interact
+                        if can_drag
                             && state.dragging_item.is_some()
                             && state.dragging_section == Some(section_id)
                             && row_response.contains_pointer()
@@ -296,7 +327,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
 
                         if let Some(drag_handle_response) = &drag_handle_response {
                             // drag_stopped() 只会 true 一帧：在这里提交重排请求，不直接改 Vec。
-                            if can_interact
+                            if can_drag
                                 && state.dragging_item == Some(item_id)
                                 && state.dragging_section == Some(section_id)
                                 && drag_handle_response.drag_stopped()

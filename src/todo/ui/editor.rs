@@ -53,6 +53,24 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 });
 
             ui.add_space(6.0);
+            ui.label("优先级 (Priority):");
+            let mut p = state.edit_priority_input.min(3);
+            egui::ComboBox::from_id_salt("edit_task_priority")
+                .selected_text(match p {
+                    0 => "P0 (最高)",
+                    1 => "P1",
+                    2 => "P2",
+                    _ => "P3 (最低)",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut p, 0, "P0 (最高)");
+                    ui.selectable_value(&mut p, 1, "P1");
+                    ui.selectable_value(&mut p, 2, "P2");
+                    ui.selectable_value(&mut p, 3, "P3 (最低)");
+                });
+            state.edit_priority_input = p;
+
+            ui.add_space(6.0);
             ui.label("到期日 (Due, YYYY-MM-DD):");
             ui.text_edit_singleline(&mut state.edit_due_input);
 
@@ -129,6 +147,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         item.description = description;
                         item.section_id = state.edit_section_input;
                         item.due_at = due_at;
+                        item.priority = state.edit_priority_input.min(3);
                         item.reminder_at = reminder_at;
                         item.reminder_sent = item.completed || item.reminder_at.is_none();
                         state.push_undo_replace_item(item_id, before);
