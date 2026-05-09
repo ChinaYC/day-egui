@@ -7,6 +7,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
             .clicked()
         {
             state.view_mode = crate::todo::state::TodoViewMode::Tasks;
+            state.selection_mode = false;
+            state.selected_items.clear();
             reset_per_section_interactions(state);
         }
         if ui
@@ -17,6 +19,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
             .clicked()
         {
             state.view_mode = crate::todo::state::TodoViewMode::Planner;
+            state.selection_mode = false;
+            state.selected_items.clear();
             reset_per_section_interactions(state);
         }
         if ui
@@ -24,6 +28,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
             .clicked()
         {
             state.view_mode = crate::todo::state::TodoViewMode::Trash;
+            state.selection_mode = false;
+            state.selected_items.clear();
             reset_per_section_interactions(state);
         }
     });
@@ -38,6 +44,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
                 .clicked()
             {
                 state.smart_view = TaskSmartView::All;
+                state.selection_mode = false;
+                state.selected_items.clear();
                 reset_per_section_interactions(state);
             }
             if ui
@@ -45,6 +53,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
                 .clicked()
             {
                 state.smart_view = TaskSmartView::Inbox;
+                state.selection_mode = false;
+                state.selected_items.clear();
                 reset_per_section_interactions(state);
             }
             if ui
@@ -52,6 +62,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
                 .clicked()
             {
                 state.smart_view = TaskSmartView::Today;
+                state.selection_mode = false;
+                state.selected_items.clear();
                 reset_per_section_interactions(state);
             }
             if ui
@@ -59,6 +71,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
                 .clicked()
             {
                 state.smart_view = TaskSmartView::Next7Days;
+                state.selection_mode = false;
+                state.selected_items.clear();
                 reset_per_section_interactions(state);
             }
         });
@@ -71,28 +85,86 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui) {
     }
 
     ui.horizontal(|ui| {
-        if ui
-            .selectable_label(state.active_section.is_none(), "全部 (All)")
-            .clicked()
-        {
-            state.active_section = None;
-            reset_per_section_interactions(state);
-        }
+        let current = if let Some(section_id) = state.active_section {
+            state
+                .section_name(section_id)
+                .map(|s| format!("清单：{s}"))
+                .unwrap_or_else(|| "清单：未知".to_string())
+        } else if let Some(folder_id) = state.active_folder {
+            state
+                .folder_name(folder_id)
+                .map(|s| format!("文件夹：{s}"))
+                .unwrap_or_else(|| "文件夹：未知".to_string())
+        } else {
+            "清单：全部".to_string()
+        };
 
-        let sections: Vec<(uuid::Uuid, String)> = state
+        let folders: Vec<(uuid::Uuid, String)> = state
+            .folders
+            .iter()
+            .map(|f| (f.id, f.name.clone()))
+            .collect();
+        let sections: Vec<(uuid::Uuid, String, Option<uuid::Uuid>)> = state
             .sections
             .iter()
-            .map(|s| (s.id, s.name.clone()))
+            .map(|s| (s.id, s.name.clone(), s.folder_id))
             .collect();
-        for (section_id, section_name) in sections {
-            if ui
-                .selectable_label(state.active_section == Some(section_id), section_name)
-                .clicked()
-            {
-                state.active_section = Some(section_id);
+
+        ui.menu_button(current, |ui| {
+            if ui.button("全部").clicked() {
+                state.active_section = None;
+                state.active_folder = None;
+                state.selection_mode = false;
+                state.selected_items.clear();
                 reset_per_section_interactions(state);
+                ui.close();
             }
-        }
+
+            ui.separator();
+
+            for (folder_id, folder_name) in &folders {
+                ui.collapsing(folder_name.clone(), |ui| {
+                    if ui.button("查看该文件夹全部任务").clicked() {
+                        state.active_section = None;
+                        state.active_folder = Some(*folder_id);
+                        state.selection_mode = false;
+                        state.selected_items.clear();
+                        reset_per_section_interactions(state);
+                        ui.close();
+                    }
+                    for (section_id, section_name, _folder) in
+                        sections.iter().filter(|(_, _, folder)| *folder == Some(*folder_id))
+                    {
+                        if ui.button(section_name.clone()).clicked() {
+                            state.active_section = Some(*section_id);
+                            state.active_folder = None;
+                            state.selection_mode = false;
+                            state.selected_items.clear();
+                            reset_per_section_interactions(state);
+                            ui.close();
+                        }
+                    }
+                });
+            }
+
+            ui.separator();
+
+            ui.collapsing("未归类", |ui| {
+                for (section_id, section_name, folder) in &sections {
+                    if folder.is_some() {
+                        continue;
+                    }
+                    if ui.button(section_name.clone()).clicked() {
+                        state.active_section = Some(*section_id);
+                        state.active_folder = None;
+                        state.selection_mode = false;
+                        state.selected_items.clear();
+                        reset_per_section_interactions(state);
+                        ui.close();
+                    }
+                }
+            });
+        });
     });
 
     ui.add_space(8.0);

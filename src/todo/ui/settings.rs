@@ -63,6 +63,56 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             ui.separator();
             ui.add_space(8.0);
 
+            ui.label("文件夹 (Folders):");
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(&mut state.new_folder_name);
+                if ui.button("创建文件夹").clicked() {
+                    let name = state.new_folder_name.trim().to_string();
+                    if name.is_empty() {
+                        state.folder_manage_error_msg = Some("文件夹名称不能为空".to_string());
+                        return;
+                    }
+                    if state.folders.iter().any(|f| f.name == name) {
+                        state.folder_manage_error_msg = Some("文件夹名称已存在".to_string());
+                        return;
+                    }
+                    state.folders.push(super::super::TodoFolder::new(name));
+                    state.new_folder_name.clear();
+                    state.folder_manage_error_msg = None;
+                    *state_changed = true;
+                }
+            });
+            if let Some(err) = &state.folder_manage_error_msg {
+                ui.label(egui::RichText::new(err).color(egui::Color32::RED));
+            }
+
+            let folders: Vec<(uuid::Uuid, String)> = state
+                .folders
+                .iter()
+                .map(|f| (f.id, f.name.clone()))
+                .collect();
+            for (folder_id, folder_name) in folders {
+                ui.horizontal(|ui| {
+                    ui.label(folder_name);
+                    if ui.button("重命名").clicked() {
+                        state.folder_to_rename = Some(folder_id);
+                        state.folder_rename_input = state
+                            .folder_name(folder_id)
+                            .unwrap_or_default()
+                            .to_string();
+                        state.folder_manage_error_msg = None;
+                    }
+                    if ui.button("删除").clicked() {
+                        state.folder_to_delete = Some(folder_id);
+                        state.folder_manage_error_msg = None;
+                    }
+                });
+            }
+
+            ui.add_space(12.0);
+            ui.separator();
+            ui.add_space(8.0);
+
             ui.label("新建分区 (Create section):");
             ui.horizontal(|ui| {
                 ui.text_edit_singleline(&mut state.new_section_name);
@@ -81,22 +131,47 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             ui.add_space(8.0);
 
             ui.label("分区管理 (Manage sections):");
-            let sections: Vec<(uuid::Uuid, String)> = state
+            let folders: Vec<(uuid::Uuid, String)> = state
+                .folders
+                .iter()
+                .map(|f| (f.id, f.name.clone()))
+                .collect();
+            let sections: Vec<(uuid::Uuid, String, Option<uuid::Uuid>)> = state
                 .sections
                 .iter()
-                .map(|s| (s.id, s.name.clone()))
+                .map(|s| (s.id, s.name.clone(), s.folder_id))
                 .collect();
-            for (section_id, section_name) in sections {
+            for (section_id, section_name, section_folder) in sections {
                 ui.horizontal(|ui| {
                     ui.label(section_name);
 
-                    if section_id == auto_id || section_id == manual_id {
-                        ui.add_enabled(false, egui::Button::new("重命名"));
-                        ui.add_enabled(false, egui::Button::new("删除"));
-                        return;
+                    let mut folder_id = section_folder;
+                    egui::ComboBox::from_id_salt(format!("section_folder_{section_id}"))
+                        .selected_text(
+                            folder_id
+                                .and_then(|id| state.folder_name(id).map(|s| s.to_string()))
+                                .unwrap_or_else(|| "未归类".to_string()),
+                        )
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut folder_id, None, "未归类");
+                            for (fid, fname) in &folders {
+                                ui.selectable_value(&mut folder_id, Some(*fid), fname.clone());
+                            }
+                        });
+                    if folder_id != section_folder {
+                        if let Some(section) = state.sections.iter_mut().find(|s| s.id == section_id)
+                        {
+                            section.folder_id = folder_id;
+                            *state_changed = true;
+                        }
                     }
 
-                    if ui.button("重命名").clicked() {
+                    let can_manage = section_id != auto_id && section_id != manual_id;
+
+                    if ui
+                        .add_enabled(can_manage, egui::Button::new("重命名"))
+                        .clicked()
+                    {
                         state.section_to_rename = Some(section_id);
                         state.section_rename_input = state
                             .section_name(section_id)
@@ -104,7 +179,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             .to_string();
                         state.section_manage_error_msg = None;
                     }
-                    if ui.button("删除").clicked() {
+                    if ui
+                        .add_enabled(can_manage, egui::Button::new("删除"))
+                        .clicked()
+                    {
                         state.section_to_delete = Some(section_id);
                         state.section_delete_move_to = Some(manual_id);
                         state.section_manage_error_msg = None;
@@ -270,6 +348,97 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         if !delete_open {
             state.section_to_delete = None;
             state.section_manage_error_msg = None;
+        }
+    }
+
+    if let Some(folder_id) = state.folder_to_rename {
+        let mut rename_open = true;
+        egui::Window::new("重命名文件夹 (Rename folder)")
+            .open(&mut rename_open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.label("新名称 (New name):");
+                ui.text_edit_singleline(&mut state.folder_rename_input);
+                if let Some(err) = &state.folder_manage_error_msg {
+                    ui.label(egui::RichText::new(err).color(egui::Color32::RED));
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("取消").clicked() {
+                        state.folder_to_rename = None;
+                        state.folder_manage_error_msg = None;
+                    }
+                    if ui.button("保存").clicked() {
+                        let name = state.folder_rename_input.trim().to_string();
+                        if name.is_empty() {
+                            state.folder_manage_error_msg = Some("文件夹名称不能为空".to_string());
+                            return;
+                        }
+                        if state.folders.iter().any(|f| f.id != folder_id && f.name == name) {
+                            state.folder_manage_error_msg = Some("文件夹名称已存在".to_string());
+                            return;
+                        }
+                        if let Some(folder) = state.folders.iter_mut().find(|f| f.id == folder_id) {
+                            folder.name = name;
+                            *state_changed = true;
+                        }
+                        state.folder_to_rename = None;
+                        state.folder_manage_error_msg = None;
+                    }
+                });
+            });
+        if !rename_open {
+            state.folder_to_rename = None;
+            state.folder_manage_error_msg = None;
+        }
+    }
+
+    if let Some(folder_id) = state.folder_to_delete {
+        let mut delete_open = true;
+        egui::Window::new("删除文件夹 (Delete folder)")
+            .open(&mut delete_open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                let folder_name = state.folder_name(folder_id).unwrap_or("未知文件夹");
+                ui.label(format!(
+                    "确认删除文件夹：{}\n该文件夹下的清单将移动到：未归类",
+                    folder_name
+                ));
+                if let Some(err) = &state.folder_manage_error_msg {
+                    ui.label(egui::RichText::new(err).color(egui::Color32::RED));
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("取消").clicked() {
+                        state.folder_to_delete = None;
+                        state.folder_manage_error_msg = None;
+                    }
+                    if ui.button("确认删除").clicked() {
+                        for section in &mut state.sections {
+                            if section.folder_id == Some(folder_id) {
+                                section.folder_id = None;
+                            }
+                        }
+                        state.folders.retain(|f| f.id != folder_id);
+                        if state.active_folder == Some(folder_id) {
+                            state.active_folder = None;
+                        }
+                        state.folder_to_delete = None;
+                        state.folder_manage_error_msg = None;
+                        *state_changed = true;
+                    }
+                });
+            });
+
+        if !delete_open {
+            state.folder_to_delete = None;
+            state.folder_manage_error_msg = None;
         }
     }
 }

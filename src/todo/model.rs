@@ -38,6 +38,9 @@ pub struct TodoItem {
     pub automated_source: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl TodoItem {
@@ -56,6 +59,7 @@ impl TodoItem {
             is_automated: false,
             automated_source: None,
             description,
+            tags: Vec::new(),
         }
     }
 
@@ -79,6 +83,7 @@ impl TodoItem {
             is_automated: true,
             automated_source: Some(source),
             description,
+            tags: Vec::new(),
         }
     }
 
@@ -108,9 +113,28 @@ fn default_priority() -> u8 {
 pub struct TodoSection {
     pub id: Uuid,
     pub name: String,
+
+    #[serde(default)]
+    pub folder_id: Option<Uuid>,
 }
 
 impl TodoSection {
+    pub fn new(name: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            folder_id: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TodoFolder {
+    pub id: Uuid,
+    pub name: String,
+}
+
+impl TodoFolder {
     pub fn new(name: String) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -149,6 +173,8 @@ pub struct TodoStorage {
     pub schema_version: u32,
     pub items: Vec<TodoItem>,
     pub sections: Vec<TodoSection>,
+    #[serde(default)]
+    pub folders: Vec<TodoFolder>,
     pub settings: TodoSettings,
     pub planner: TodoPlanner,
 }

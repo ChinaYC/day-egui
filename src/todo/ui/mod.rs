@@ -39,6 +39,7 @@ impl TodoState {
                         if let Some(item) = self.items.iter().find(|i| i.id == item_id) {
                             self.edit_title_input = item.title.clone();
                             self.edit_desc_input = item.description.clone().unwrap_or_default();
+                            self.edit_tags_input = item.tags.join(", ");
                             self.edit_section_input = item.section_id;
                             self.edit_due_input = item.due_at_local_string().unwrap_or_default();
                             self.edit_reminder_input =
@@ -68,6 +69,7 @@ impl TodoState {
                         item.reminder_sent = true;
                         self.push_undo_replace_item(item_id, before);
                         self.show_snackbar("已删除");
+                        self.selected_items.remove(&item_id);
                         state_changed = true;
                     }
                 }
@@ -80,6 +82,7 @@ impl TodoState {
                             item.reminder_sent = false;
                         }
                         self.push_undo_replace_item(item_id, before);
+                        self.selected_items.remove(&item_id);
                         state_changed = true;
                     }
                 }
@@ -90,6 +93,7 @@ impl TodoState {
                         self.undo_stack
                             .push(crate::todo::state::UndoAction::ReinsertItem { index: pos, item });
                         self.show_snackbar("已彻底删除");
+                        self.selected_items.remove(&item_id);
                         state_changed = true;
                     }
                 }
@@ -99,8 +103,10 @@ impl TodoState {
                     let mut i = 0;
                     while i < self.items.len() {
                         if self.items[i].deleted_at.is_some() {
+                            let id = self.items[i].id;
                             let item = self.items.remove(i);
                             removed.push((i, item));
+                            self.selected_items.remove(&id);
                         } else {
                             i += 1;
                         }

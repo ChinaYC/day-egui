@@ -5,5 +5,5 @@ pub mod reminders;
 pub mod state;
 pub mod ui;
 
-pub use model::{TodoItem, TodoSection, TodoSettings};
+pub use model::{TodoFolder, TodoItem, TodoSection, TodoSettings};
 pub use state::TodoState;

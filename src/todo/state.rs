@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::model::{TodoItem, TodoPlanner, TodoSection, TodoSettings, TodoStorage};
+use super::model::{TodoFolder, TodoItem, TodoPlanner, TodoSection, TodoSettings, TodoStorage};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write as _};
 use std::time::{Duration, Instant};
@@ -65,12 +65,14 @@ pub enum UndoAction {
 pub struct TodoState {
     pub items: Vec<TodoItem>,
     pub sections: Vec<TodoSection>,
+    pub folders: Vec<TodoFolder>,
     pub settings: TodoSettings,
     pub planner: TodoPlanner,
     pub new_task_title: String,
     pub new_task_description: String,
     pub new_task_due: String,
     pub new_task_reminder: String,
+    pub new_task_tags: String,
 
     pub save_folder: Option<String>,
 
@@ -89,6 +91,10 @@ pub struct TodoState {
 
     #[serde(skip)]
     pub active_section: Option<Uuid>,
+    #[serde(skip)]
+    pub active_folder: Option<Uuid>,
+    #[serde(skip)]
+    pub active_tag: Option<String>,
     #[serde(skip)]
     pub new_section_name: String,
     #[serde(skip)]
@@ -110,6 +116,8 @@ pub struct TodoState {
     #[serde(skip)]
     pub edit_desc_input: String,
     #[serde(skip)]
+    pub edit_tags_input: String,
+    #[serde(skip)]
     pub edit_section_input: Option<Uuid>,
     #[serde(skip)]
     pub edit_due_input: String,
@@ -119,6 +127,13 @@ pub struct TodoState {
     pub edit_priority_input: u8,
     #[serde(skip)]
     pub edit_error_msg: Option<String>,
+
+    #[serde(skip)]
+    pub selection_mode: bool,
+    #[serde(skip)]
+    pub selected_items: std::collections::BTreeSet<Uuid>,
+    #[serde(skip)]
+    pub batch_tag_input: String,
 
     #[serde(skip)]
     pub view_mode: TodoViewMode,
@@ -158,6 +173,17 @@ pub struct TodoState {
     pub section_manage_error_msg: Option<String>,
 
     #[serde(skip)]
+    pub new_folder_name: String,
+    #[serde(skip)]
+    pub folder_to_rename: Option<Uuid>,
+    #[serde(skip)]
+    pub folder_rename_input: String,
+    #[serde(skip)]
+    pub folder_to_delete: Option<Uuid>,
+    #[serde(skip)]
+    pub folder_manage_error_msg: Option<String>,
+
+    #[serde(skip)]
     pub last_font_scale: f32,
 
     #[serde(skip)]
@@ -171,12 +197,14 @@ impl Default for TodoState {
         let mut state = Self {
             items: Vec::new(),
             sections: Vec::new(),
+            folders: Vec::new(),
             settings: TodoSettings::default(),
             planner: TodoPlanner::default(),
             new_task_title: String::new(),
             new_task_description: String::new(),
             new_task_due: String::new(),
             new_task_reminder: String::new(),
+            new_task_tags: String::new(),
             save_folder: None,
             item_to_delete: None,
             delete_is_permanent: false,
@@ -185,6 +213,8 @@ impl Default for TodoState {
             dragging_section: None,
             drag_target_index: None,
             active_section: None,
+            active_folder: None,
+            active_tag: None,
             new_section_name: String::new(),
             new_task_section: None,
             show_settings: false,
@@ -194,6 +224,7 @@ impl Default for TodoState {
             editing_task: None,
             edit_title_input: String::new(),
             edit_desc_input: String::new(),
+            edit_tags_input: String::new(),
             edit_section_input: None,
             edit_due_input: String::new(),
             edit_reminder_input: String::new(),
@@ -215,9 +246,17 @@ impl Default for TodoState {
             section_to_delete: None,
             section_delete_move_to: None,
             section_manage_error_msg: None,
+            new_folder_name: String::new(),
+            folder_to_rename: None,
+            folder_rename_input: String::new(),
+            folder_to_delete: None,
+            folder_manage_error_msg: None,
             last_font_scale: 1.0,
             initial_loaded: false,
             error_msg: None,
+            selection_mode: false,
+            selected_items: std::collections::BTreeSet::new(),
+            batch_tag_input: String::new(),
         };
         state.ensure_builtin_sections_and_settings();
         state
@@ -302,6 +341,13 @@ impl TodoState {
             .map(|s| s.name.as_str())
     }
 
+    pub fn folder_name(&self, folder_id: Uuid) -> Option<&str> {
+        self.folders
+            .iter()
+            .find(|f| f.id == folder_id)
+            .map(|f| f.name.as_str())
+    }
+
     pub fn get_or_create_section_id_by_name(&mut self, name: &str) -> Uuid {
         if let Some(section) = self.sections.iter().find(|s| s.name == name) {
             return section.id;
@@ -362,6 +408,7 @@ impl TodoState {
                 if let Some(storage) = storage_res {
                     self.items = storage.items;
                     self.sections = storage.sections;
+                    self.folders = storage.folders;
                     self.settings = storage.settings;
                     self.planner = storage.planner;
                 } else {
@@ -394,6 +441,7 @@ impl TodoState {
                 schema_version: 1,
                 items: self.items.clone(),
                 sections: self.sections.clone(),
+                folders: self.folders.clone(),
                 settings: self.settings.clone(),
                 planner: self.planner.clone(),
             };

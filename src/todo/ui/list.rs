@@ -53,6 +53,13 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         .show(ui, |ui| {
             let sections_to_render: Vec<Uuid> = if let Some(active) = state.active_section {
                 vec![active]
+            } else if let Some(folder_id) = state.active_folder {
+                state
+                    .sections
+                    .iter()
+                    .filter(|s| s.folder_id == Some(folder_id))
+                    .map(|s| s.id)
+                    .collect()
             } else {
                 state.sections.iter().map(|s| s.id).collect()
             };
@@ -97,7 +104,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     let item_id = item.id;
                     let mut drag_handle_response: Option<egui::Response> = None;
                     let can_interact = state.view_mode == TodoViewMode::Tasks && item.deleted_at.is_none();
-                    let can_drag = can_interact && state.sort_mode == SortMode::Manual;
+                    let can_drag =
+                        can_interact && state.sort_mode == SortMode::Manual && !state.selection_mode;
 
                     ui.vertical(|ui| {
                         let row_response = ui
@@ -105,6 +113,17 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 let mut completed = item.completed;
                                 let completed_before = item.completed;
                                 let reminder_sent_before = item.reminder_sent;
+
+                                if state.selection_mode && can_interact {
+                                    let mut selected = state.selected_items.contains(&item_id);
+                                    if ui.checkbox(&mut selected, "").changed() {
+                                        if selected {
+                                            state.selected_items.insert(item_id);
+                                        } else {
+                                            state.selected_items.remove(&item_id);
+                                        }
+                                    }
+                                }
 
                                 drag_handle_response = Some(
                                     ui.add_enabled(
@@ -162,7 +181,15 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     egui::Label::new(title_text).sense(egui::Sense::click()),
                                 );
                                 if can_interact && title_response.clicked() {
-                                    open_editor_for = Some(item_id);
+                                    if state.selection_mode {
+                                        if state.selected_items.contains(&item_id) {
+                                            state.selected_items.remove(&item_id);
+                                        } else {
+                                            state.selected_items.insert(item_id);
+                                        }
+                                    } else {
+                                        open_editor_for = Some(item_id);
+                                    }
                                 }
 
                                 let p = item.priority.min(3);
@@ -184,6 +211,23 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                             .size(10.0)
                                             .color(egui::Color32::LIGHT_GREEN),
                                     );
+                                }
+
+                                if !item.tags.is_empty() {
+                                    for tag in item.tags.iter().take(3) {
+                                        ui.label(
+                                            egui::RichText::new(format!("#{tag}"))
+                                                .size(10.0)
+                                                .color(egui::Color32::from_rgb(120, 170, 255)),
+                                        );
+                                    }
+                                    if item.tags.len() > 3 {
+                                        ui.label(
+                                            egui::RichText::new("…")
+                                                .size(10.0)
+                                                .color(egui::Color32::GRAY),
+                                        );
+                                    }
                                 }
 
                                 ui.with_layout(
@@ -208,7 +252,22 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
 
                                             let mut moved_section = item.section_id;
                                             ui.menu_button("📁", |ui| {
-                                                for section in &state.sections {
+                                                for folder in &state.folders {
+                                                    ui.collapsing(folder.name.clone(), |ui| {
+                                                        for section in state
+                                                            .sections
+                                                            .iter()
+                                                            .filter(|s| s.folder_id == Some(folder.id))
+                                                        {
+                                                            if ui.button(section.name.clone()).clicked() {
+                                                                moved_section = Some(section.id);
+                                                                ui.close();
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                                ui.separator();
+                                                for section in state.sections.iter().filter(|s| s.folder_id.is_none()) {
                                                     if ui.button(section.name.clone()).clicked() {
                                                         moved_section = Some(section.id);
                                                         ui.close();
@@ -413,6 +472,13 @@ fn item_matches_filters(state: &TodoState, item: &crate::todo::model::TodoItem, 
             if item.reminder_at.is_some() {
                 return false;
             }
+        }
+    }
+
+    if let Some(tag) = &state.active_tag {
+        let tag_l = tag.to_lowercase();
+        if !item.tags.iter().any(|t| t.to_lowercase() == tag_l) {
+            return false;
         }
     }
 
