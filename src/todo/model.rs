@@ -145,7 +145,13 @@ fn default_font_scale() -> f32 {
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct TodoStorage {
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
     pub items: Vec<TodoItem>,
     pub sections: Vec<TodoSection>,
     pub settings: TodoSettings,
+}
+
+fn default_schema_version() -> u32 {
+    1
 }

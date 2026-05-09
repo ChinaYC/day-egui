@@ -111,6 +111,32 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     }
                 });
             }
+
+            ui.add_space(12.0);
+            ui.separator();
+            ui.add_space(8.0);
+
+            ui.label("数据工具 (Data tools):");
+            ui.horizontal(|ui| {
+                if ui.button("导出任务 JSONL").clicked() {
+                    if let Some(path) = state.export_jsonl(false) {
+                        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                            state.show_snackbar(format!("已导出: {name}"));
+                        } else {
+                            state.show_snackbar("已导出");
+                        }
+                    }
+                }
+                if ui.button("导出回收站 JSONL").clicked() {
+                    if let Some(path) = state.export_jsonl(true) {
+                        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                            state.show_snackbar(format!("已导出: {name}"));
+                        } else {
+                            state.show_snackbar("已导出");
+                        }
+                    }
+                }
+            });
         });
 
     if !open {

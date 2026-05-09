@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Write as _};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -350,21 +352,26 @@ impl TodoState {
     pub fn load_from_file(&mut self) {
         if let Some(path) = self.get_save_path() {
             if path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Ok(storage) = serde_json::from_str::<TodoStorage>(&content) {
-                        self.items = storage.items;
-                        self.sections = storage.sections;
-                        self.settings = storage.settings;
-                    } else if let Ok(items) = serde_json::from_str::<Vec<TodoItem>>(&content) {
+                let storage_res = File::open(&path)
+                    .ok()
+                    .and_then(|f| serde_json::from_reader::<_, TodoStorage>(BufReader::new(f)).ok());
+
+                if let Some(storage) = storage_res {
+                    self.items = storage.items;
+                    self.sections = storage.sections;
+                    self.settings = storage.settings;
+                } else {
+                    let items_res = File::open(&path)
+                        .ok()
+                        .and_then(|f| serde_json::from_reader::<_, Vec<TodoItem>>(BufReader::new(f)).ok());
+
+                    if let Some(items) = items_res {
                         self.items = items;
                     } else {
                         self.error_msg = Some(
                             "无法解析本地数据文件 (Failed to parse local data file)".to_string(),
                         );
                     }
-                } else {
-                    self.error_msg =
-                        Some("无法读取本地数据文件 (Failed to read local data file)".to_string());
                 }
             }
         }
@@ -380,18 +387,114 @@ impl TodoState {
             }
 
             let storage = TodoStorage {
+                schema_version: 1,
                 items: self.items.clone(),
                 sections: self.sections.clone(),
                 settings: self.settings.clone(),
             };
 
-            if let Ok(content) = serde_json::to_string_pretty(&storage) {
-                if let Err(e) = std::fs::write(&path, content) {
-                    println!("Failed to save todo items: {}", e);
+            let Some(folder) = path.parent() else {
+                return;
+            };
+            let Ok(mut tmp) = tempfile::NamedTempFile::new_in(folder) else {
+                return;
+            };
+            {
+                let mut writer = BufWriter::new(&mut tmp);
+                if serde_json::to_writer_pretty(&mut writer, &storage).is_err() {
+                    return;
+                }
+                if writer.write_all(b"\n").is_err() {
+                    return;
+                }
+                if writer.flush().is_err() {
+                    return;
                 }
             }
+            let _ = tmp.persist(path);
         }
         super::reminders::write_reminders_ics(self);
+    }
+
+    pub fn export_jsonl(&mut self, only_trash: bool) -> Option<std::path::PathBuf> {
+        #[derive(Serialize)]
+        struct ExportItem<'a> {
+            id: uuid::Uuid,
+            title: &'a str,
+            completed: bool,
+            created_at: &'a str,
+            section: &'a str,
+            priority: u8,
+            due_at: Option<chrono::DateTime<chrono::Utc>>,
+            reminder_at: Option<chrono::DateTime<chrono::Utc>>,
+            deleted: bool,
+            deleted_at: Option<chrono::DateTime<chrono::Utc>>,
+            is_automated: bool,
+            automated_source: Option<&'a str>,
+            description: Option<&'a str>,
+        }
+
+        let folder = self.get_save_folder_path()?;
+        let _ = std::fs::create_dir_all(&folder);
+
+        let file_name = if only_trash {
+            "todos.trash.export.jsonl"
+        } else {
+            "todos.export.jsonl"
+        };
+        let path = folder.join(file_name);
+
+        let Ok(file) = File::create(&path) else {
+            self.show_snackbar("导出失败");
+            return None;
+        };
+        let mut writer = BufWriter::new(file);
+
+        let manual_id = self.get_or_create_section_id_by_name("手动 (Manual)");
+        for item in &self.items {
+            let deleted = item.deleted_at.is_some();
+            if only_trash {
+                if !deleted {
+                    continue;
+                }
+            } else if deleted {
+                continue;
+            }
+
+            let section_id = item.section_id.unwrap_or(manual_id);
+            let section = self.section_name(section_id).unwrap_or("未知分区 (Unknown)");
+            let export = ExportItem {
+                id: item.id,
+                title: item.title.as_str(),
+                completed: item.completed,
+                created_at: item.created_at.as_str(),
+                section,
+                priority: item.priority.min(3),
+                due_at: item.due_at,
+                reminder_at: item.reminder_at,
+                deleted,
+                deleted_at: item.deleted_at,
+                is_automated: item.is_automated,
+                automated_source: item.automated_source.as_deref(),
+                description: item.description.as_deref(),
+            };
+
+            if serde_json::to_writer(&mut writer, &export).is_err() {
+                self.show_snackbar("导出失败");
+                return None;
+            }
+            if writer.write_all(b"\n").is_err() {
+                self.show_snackbar("导出失败");
+                return None;
+            }
+        }
+
+        if writer.flush().is_err() {
+            self.show_snackbar("导出失败");
+            return None;
+        }
+
+        Some(path)
     }
 
     pub fn poll_reminders_and_persist_if_needed(&mut self) {
