@@ -1,4 +1,5 @@
 use super::super::TodoState;
+use crate::todo::ThemeMode;
 
 pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) {
     egui::Area::new("todo_settings_button".into())
@@ -34,6 +35,25 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 .changed()
             {
                 state.settings.font_scale = font_scale;
+                *state_changed = true;
+            }
+
+            ui.add_space(10.0);
+            ui.label("主题 (Theme):");
+            let mut theme_mode = state.settings.theme_mode;
+            egui::ComboBox::from_id_salt("theme_mode_select")
+                .selected_text(match theme_mode {
+                    ThemeMode::System => "跟随系统",
+                    ThemeMode::Light => "白色",
+                    ThemeMode::Dark => "黑色",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut theme_mode, ThemeMode::System, "跟随系统");
+                    ui.selectable_value(&mut theme_mode, ThemeMode::Light, "白色");
+                    ui.selectable_value(&mut theme_mode, ThemeMode::Dark, "黑色");
+                });
+            if theme_mode != state.settings.theme_mode {
+                state.settings.theme_mode = theme_mode;
                 *state_changed = true;
             }
 

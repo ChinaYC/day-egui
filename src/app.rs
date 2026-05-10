@@ -1,5 +1,5 @@
 use crate::leetcode::LeetCodeState;
-use crate::todo::TodoState;
+use crate::todo::{ThemeMode, TodoState};
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy)]
 pub enum AppRoute {
@@ -20,6 +20,8 @@ pub struct TemplateApp {
     route: AppRoute,
     leetcode_state: LeetCodeState,
     todo_state: TodoState,
+    #[serde(skip)]
+    system_visuals: Option<egui::Visuals>,
 }
 
 impl Default for TemplateApp {
@@ -28,6 +30,7 @@ impl Default for TemplateApp {
             route: AppRoute::default(),
             leetcode_state: LeetCodeState::default(),
             todo_state: TodoState::default(),
+            system_visuals: None,
         }
     }
 }
@@ -42,11 +45,13 @@ impl TemplateApp {
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
+        let mut app: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
-        }
+        };
+        app.system_visuals = Some(cc.egui_ctx.global_style().visuals.clone());
+        app
     }
 }
 
@@ -61,6 +66,15 @@ impl eframe::App for TemplateApp {
         // Ensure initial load if not loaded yet
         if !self.todo_state.initial_loaded {
             self.todo_state.load_from_file();
+        }
+
+        let visuals = match self.todo_state.settings.theme_mode {
+            ThemeMode::System => self.system_visuals.clone(),
+            ThemeMode::Light => Some(egui::Visuals::light()),
+            ThemeMode::Dark => Some(egui::Visuals::dark()),
+        };
+        if let Some(visuals) = visuals {
+            ui.ctx().set_visuals(visuals);
         }
 
         // 提醒轮询：让应用在空闲时也能“到点触发通知”。

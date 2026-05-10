@@ -7,6 +7,13 @@ pub enum ReminderRepeat {
     Weekly { weekday: u8, hour: u8, minute: u8 },
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeMode {
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TodoItem {
     pub id: Uuid,
@@ -189,6 +196,8 @@ pub struct TodoSettings {
     // 字体大小倍率（1.0 = 默认），用于提升可读性。
     #[serde(default = "default_font_scale")]
     pub font_scale: f32,
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: ThemeMode,
 }
 
 impl Default for TodoSettings {
@@ -196,12 +205,17 @@ impl Default for TodoSettings {
         Self {
             automated_section_id: None,
             font_scale: default_font_scale(),
+            theme_mode: default_theme_mode(),
         }
     }
 }
 
 fn default_font_scale() -> f32 {
     1.0
+}
+
+fn default_theme_mode() -> ThemeMode {
+    ThemeMode::System
 }
 
 #[derive(Serialize, Deserialize, Default)]
