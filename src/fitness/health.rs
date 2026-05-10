@@ -1,4 +1,4 @@
-use super::model::{FitnessPhase, Sex};
+use super::model::{FitnessPhase, MetricLevel, PlanMetric, Sex};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum IndicatorLevel {
@@ -13,6 +13,42 @@ pub struct MetricIndicator {
     pub value_text: String,
     pub reference_text: String,
     pub level: IndicatorLevel,
+}
+
+pub fn build_plan_metrics(
+    sex: Option<Sex>,
+    height_cm: Option<f32>,
+    weight_kg: Option<f32>,
+    body_fat_pct: Option<f32>,
+    visceral_fat_level: Option<f32>,
+    skeletal_muscle_kg: Option<f32>,
+) -> Vec<PlanMetric> {
+    let bmi_ind = bmi_indicator(bmi(height_cm, weight_kg));
+    let bf_ind = body_fat_indicator(sex, body_fat_pct);
+    let vf_ind = visceral_fat_indicator(visceral_fat_level);
+    let sm_ind = skeletal_muscle_indicator(sex, skeletal_muscle_kg);
+
+    vec![
+        indicator_to_plan_metric("bmi", &bmi_ind),
+        indicator_to_plan_metric("body_fat_pct", &bf_ind),
+        indicator_to_plan_metric("visceral_fat_level", &vf_ind),
+        indicator_to_plan_metric("skeletal_muscle_kg", &sm_ind),
+    ]
+}
+
+fn indicator_to_plan_metric(key: &'static str, ind: &MetricIndicator) -> PlanMetric {
+    PlanMetric {
+        key: key.to_string(),
+        name: ind.name.to_string(),
+        value_text: ind.value_text.clone(),
+        reference_text: ind.reference_text.clone(),
+        level: match ind.level {
+            IndicatorLevel::Good => MetricLevel::Green,
+            IndicatorLevel::Warn => MetricLevel::Yellow,
+            IndicatorLevel::Bad => MetricLevel::Red,
+            IndicatorLevel::Unknown => MetricLevel::Unknown,
+        },
+    }
 }
 
 pub fn bmi(height_cm: Option<f32>, weight_kg: Option<f32>) -> Option<f32> {

@@ -22,6 +22,23 @@ pub enum FitnessPhase {
     Maintenance,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum MetricLevel {
+    Green,
+    Yellow,
+    Red,
+    Unknown,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PlanMetric {
+    pub key: String,
+    pub name: String,
+    pub value_text: String,
+    pub reference_text: String,
+    pub level: MetricLevel,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct FitnessProfileInput {
@@ -86,6 +103,8 @@ pub struct FitnessPlan {
     pub start_date: String,
     pub bmi: Option<f32>,
     pub health_summary: Vec<String>,
+    #[serde(default)]
+    pub metrics: Vec<PlanMetric>,
     pub phase: FitnessPhase,
     pub need_daily_training: bool,
     pub recommended_weekly_training_days: u8,

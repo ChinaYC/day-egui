@@ -196,6 +196,19 @@ fn show_profile_detail(
         ui.add_space(6.0);
 
         ui.label(egui::RichText::new("健康指标（当前值 vs 参考）").strong());
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("●").color(egui::Color32::from_rgb(46, 204, 113)));
+            ui.label(egui::RichText::new("正常").color(egui::Color32::GRAY));
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("●").color(egui::Color32::from_rgb(241, 196, 15)));
+            ui.label(egui::RichText::new("注意").color(egui::Color32::GRAY));
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("●").color(egui::Color32::from_rgb(231, 76, 60)));
+            ui.label(egui::RichText::new("风险").color(egui::Color32::GRAY));
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("○").color(egui::Color32::GRAY));
+            ui.label(egui::RichText::new("未填写").color(egui::Color32::GRAY));
+        });
         let bmi_v = health::bmi(profile.input.height_cm, profile.input.weight_kg);
         let bmi_i = health::bmi_indicator(bmi_v);
         let bf_i = health::body_fat_indicator(profile.input.sex, profile.input.body_fat_pct);
@@ -419,6 +432,14 @@ fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPla
 
     let sex = input.sex.unwrap_or(Sex::Male);
     let phase = health::decide_phase(sex, bmi, input.body_fat_pct, input.skeletal_muscle_kg);
+    let metrics = health::build_plan_metrics(
+        input.sex,
+        input.height_cm,
+        input.weight_kg,
+        input.body_fat_pct,
+        input.visceral_fat_level,
+        input.skeletal_muscle_kg,
+    );
 
     let goal_days = input.weekly_training_days_goal.unwrap_or(3).clamp(1, 7);
     let recommended_days = match phase {
@@ -439,6 +460,7 @@ fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPla
         start_date: start_date.format("%Y-%m-%d").to_string(),
         bmi: Some(bmi),
         health_summary: summary,
+        metrics,
         phase,
         need_daily_training: need_daily,
         recommended_weekly_training_days: recommended_days,
