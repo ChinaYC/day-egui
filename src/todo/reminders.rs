@@ -119,48 +119,39 @@ fn parse_relative_day_prefix(s: &str) -> Option<(NaiveDate, &str)> {
     Some((base + Duration::days(days), rest.trim()))
 }
 
-const WEEKDAY_ALIASES: &[(&str, Weekday)] = &[
-    ("周一", Weekday::Mon),
-    ("星期一", Weekday::Mon),
-    ("礼拜一", Weekday::Mon),
-    ("周二", Weekday::Tue),
-    ("星期二", Weekday::Tue),
-    ("礼拜二", Weekday::Tue),
-    ("周三", Weekday::Wed),
-    ("星期三", Weekday::Wed),
-    ("礼拜三", Weekday::Wed),
-    ("周四", Weekday::Thu),
-    ("星期四", Weekday::Thu),
-    ("礼拜四", Weekday::Thu),
-    ("周五", Weekday::Fri),
-    ("星期五", Weekday::Fri),
-    ("礼拜五", Weekday::Fri),
-    ("周六", Weekday::Sat),
-    ("星期六", Weekday::Sat),
-    ("礼拜六", Weekday::Sat),
-    ("周日", Weekday::Sun),
-    ("周天", Weekday::Sun),
-    ("星期日", Weekday::Sun),
-    ("星期天", Weekday::Sun),
-    ("礼拜日", Weekday::Sun),
-    ("礼拜天", Weekday::Sun),
-    ("mon", Weekday::Mon),
-    ("monday", Weekday::Mon),
-    ("tue", Weekday::Tue),
-    ("tues", Weekday::Tue),
-    ("tuesday", Weekday::Tue),
-    ("wed", Weekday::Wed),
-    ("wednesday", Weekday::Wed),
-    ("thu", Weekday::Thu),
-    ("thur", Weekday::Thu),
-    ("thurs", Weekday::Thu),
-    ("thursday", Weekday::Thu),
-    ("fri", Weekday::Fri),
-    ("friday", Weekday::Fri),
-    ("sat", Weekday::Sat),
-    ("saturday", Weekday::Sat),
-    ("sun", Weekday::Sun),
-    ("sunday", Weekday::Sun),
+const MON_ALIASES: &[&str] = &["周一", "星期一", "礼拜一", "mon", "monday"];
+const TUE_ALIASES: &[&str] = &["周二", "星期二", "礼拜二", "tue", "tues", "tuesday"];
+const WED_ALIASES: &[&str] = &["周三", "星期三", "礼拜三", "wed", "wednesday"];
+const THU_ALIASES: &[&str] = &[
+    "周四",
+    "星期四",
+    "礼拜四",
+    "thu",
+    "thur",
+    "thurs",
+    "thursday",
+];
+const FRI_ALIASES: &[&str] = &["周五", "星期五", "礼拜五", "fri", "friday"];
+const SAT_ALIASES: &[&str] = &["周六", "星期六", "礼拜六", "sat", "saturday"];
+const SUN_ALIASES: &[&str] = &[
+    "周日",
+    "周天",
+    "星期日",
+    "星期天",
+    "礼拜日",
+    "礼拜天",
+    "sun",
+    "sunday",
+];
+
+const WEEKDAY_ALIAS_GROUPS: &[(Weekday, &[&str])] = &[
+    (Weekday::Mon, MON_ALIASES),
+    (Weekday::Tue, TUE_ALIASES),
+    (Weekday::Wed, WED_ALIASES),
+    (Weekday::Thu, THU_ALIASES),
+    (Weekday::Fri, FRI_ALIASES),
+    (Weekday::Sat, SAT_ALIASES),
+    (Weekday::Sun, SUN_ALIASES),
 ];
 
 fn parse_weekday_prefix(s: &str) -> Option<(NaiveDate, &str)> {
@@ -187,12 +178,11 @@ fn parse_weekday_token_and_rest(s: &str) -> Option<(Weekday, &str)> {
     let tail = s[start_index..].trim_start();
     let lower_tail = tail.to_ascii_lowercase();
 
-    for (alias, weekday) in WEEKDAY_ALIASES {
-        if tail.starts_with(alias) {
-            return Some((*weekday, tail[alias.len()..].trim()));
-        }
-        if lower_tail.starts_with(alias) {
-            return Some((*weekday, tail[alias.len()..].trim()));
+    for (weekday, aliases) in WEEKDAY_ALIAS_GROUPS {
+        for alias in *aliases {
+            if lower_tail.starts_with(alias) {
+                return Some((*weekday, tail[alias.len()..].trim()));
+            }
         }
     }
 
