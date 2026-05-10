@@ -2,6 +2,7 @@ use chrono::{NaiveDate, TimeZone, Utc};
 
 use super::FitnessState;
 use super::model::{DailyWorkoutPlan, DietPlan, FitnessPhase, FitnessPlan, Sex, TrainingCondition};
+use crate::fitness::health;
 use crate::todo::{TodoItem, TodoState};
 
 pub fn show(
@@ -190,6 +191,29 @@ fn show_profile_detail(
             ui.add(egui::DragValue::new(profile.input.weight_kg.get_or_insert(0.0)).speed(0.5));
         });
 
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(6.0);
+
+        ui.label(egui::RichText::new("健康指标（当前值 vs 参考）").strong());
+        let bmi_v = health::bmi(profile.input.height_cm, profile.input.weight_kg);
+        let bmi_i = health::bmi_indicator(bmi_v);
+        let bf_i = health::body_fat_indicator(profile.input.sex, profile.input.body_fat_pct);
+        let vf_i = health::visceral_fat_indicator(profile.input.visceral_fat_level);
+        let sm_i =
+            health::skeletal_muscle_indicator(profile.input.sex, profile.input.skeletal_muscle_kg);
+
+        ui.add_space(4.0);
+        egui::Grid::new("fitness_metrics_grid")
+            .num_columns(3)
+            .spacing(egui::vec2(10.0, 6.0))
+            .show(ui, |ui| {
+                metric_row(ui, &bmi_i);
+                metric_row(ui, &bf_i);
+                metric_row(ui, &vf_i);
+                metric_row(ui, &sm_i);
+            });
+
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label("创建数据时间：");
@@ -349,23 +373,34 @@ fn show_profile_detail(
     state.error_msg = error;
 }
 
+fn metric_row(ui: &mut egui::Ui, ind: &health::MetricIndicator) {
+    ui.label(ind.name);
+    let (color, symbol) = match ind.level {
+        health::IndicatorLevel::Good => (egui::Color32::from_rgb(46, 204, 113), "●"),
+        health::IndicatorLevel::Warn => (egui::Color32::from_rgb(241, 196, 15), "●"),
+        health::IndicatorLevel::Bad => (egui::Color32::from_rgb(231, 76, 60), "●"),
+        health::IndicatorLevel::Unknown => (egui::Color32::GRAY, "○"),
+    };
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(symbol).color(color));
+        ui.label(egui::RichText::new(ind.value_text.clone()).color(color));
+    });
+    ui.label(egui::RichText::new(ind.reference_text.clone()).color(egui::Color32::GRAY));
+    ui.end_row();
+}
+
 fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPlan, String> {
     let start_date = parse_start_date(input.data_date.as_deref())?;
     let height_cm = input.height_cm.filter(|v| *v > 0.0).ok_or("请填写身高")?;
     let weight_kg = input.weight_kg.filter(|v| *v > 0.0).ok_or("请填写体重")?;
-    let height_m = height_cm / 100.0;
-    let bmi = weight_kg / (height_m * height_m);
+    let bmi = health::bmi(Some(height_cm), Some(weight_kg)).ok_or("身高或体重不正确")?;
 
     let mut summary: Vec<String> = Vec::new();
-    if bmi < 18.5 {
-        summary.push("BMI 偏低，注意能量与蛋白摄入".to_string());
-    } else if bmi < 24.0 {
-        summary.push("BMI 正常范围".to_string());
-    } else if bmi < 28.0 {
-        summary.push("BMI 超重区间，优先减脂".to_string());
-    } else {
-        summary.push("BMI 肥胖区间，建议减脂并提升日常活动量".to_string());
-    }
+    let bmi_ind = health::bmi_indicator(Some(bmi));
+    summary.push(format!(
+        "BMI：{}（{}）",
+        bmi_ind.value_text, bmi_ind.reference_text
+    ));
 
     if let Some(v) = input.body_fat_pct {
         if v > 0.0 {
@@ -383,7 +418,7 @@ fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPla
     }
 
     let sex = input.sex.unwrap_or(Sex::Male);
-    let phase = decide_phase(sex, bmi, input.body_fat_pct, input.skeletal_muscle_kg);
+    let phase = health::decide_phase(sex, bmi, input.body_fat_pct, input.skeletal_muscle_kg);
 
     let goal_days = input.weekly_training_days_goal.unwrap_or(3).clamp(1, 7);
     let recommended_days = match phase {
@@ -410,33 +445,6 @@ fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPla
         weekly_training_plan,
         weekly_diet_suggestions,
     })
-}
-
-fn decide_phase(
-    sex: Sex,
-    bmi: f32,
-    body_fat_pct: Option<f32>,
-    skeletal_muscle_kg: Option<f32>,
-) -> FitnessPhase {
-    let bf = body_fat_pct.unwrap_or(0.0);
-    let muscle = skeletal_muscle_kg.unwrap_or(0.0);
-    let bf_high = match sex {
-        Sex::Male => bf > 20.0,
-        Sex::Female => bf > 30.0,
-    };
-    let muscle_low = muscle > 0.0
-        && match sex {
-            Sex::Male => muscle < 28.0,
-            Sex::Female => muscle < 20.0,
-        };
-
-    if bmi >= 24.0 || bf_high {
-        FitnessPhase::FatLoss
-    } else if muscle_low {
-        FitnessPhase::MuscleGain
-    } else {
-        FitnessPhase::Maintenance
-    }
 }
 
 fn build_week_plan(cond: TrainingCondition, days: u8) -> Vec<DailyWorkoutPlan> {
