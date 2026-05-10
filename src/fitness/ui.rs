@@ -1,4 +1,4 @@
-use chrono::{TimeZone, Utc};
+use chrono::{NaiveDate, TimeZone, Utc};
 
 use super::FitnessState;
 use super::model::{DailyWorkoutPlan, DietPlan, FitnessPhase, FitnessPlan, Sex, TrainingCondition};
@@ -12,6 +12,10 @@ pub fn show(
 ) {
     ui.heading("健身训练 (Fitness)");
     ui.add_space(8.0);
+
+    if state.selected_profile.is_none() {
+        state.selected_profile = state.profiles.first().map(|p| p.id);
+    }
 
     ui.columns(2, |cols| {
         cols[0].set_width(240.0);
@@ -146,6 +150,22 @@ fn show_profile_detail(
     todo: &mut TodoState,
     state_changed: &mut bool,
 ) {
+    ui.horizontal(|ui| {
+        ui.label("人员：");
+        let selected_name = state
+            .selected_profile()
+            .map(|p| p.name.as_str())
+            .unwrap_or("未选择");
+        egui::ComboBox::from_id_salt("fitness_profile_select")
+            .selected_text(selected_name)
+            .show_ui(ui, |ui| {
+                for p in &state.profiles {
+                    ui.selectable_value(&mut state.selected_profile, Some(p.id), p.name.clone());
+                }
+            });
+    });
+    ui.add_space(8.0);
+
     let Some(profile_id) = state.selected_profile else {
         ui.label("请选择左侧人员后开始填写。");
         return;
@@ -168,6 +188,25 @@ fn show_profile_detail(
             ui.add_space(10.0);
             ui.label("体重(kg)：");
             ui.add(egui::DragValue::new(profile.input.weight_kg.get_or_insert(0.0)).speed(0.5));
+        });
+
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label("创建数据时间：");
+            let date_str = profile
+                .input
+                .data_date
+                .get_or_insert_with(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+            ui.text_edit_singleline(date_str);
+            ui.add_space(6.0);
+            if ui.button("今天").clicked() {
+                *date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+            }
+            if ui.button("明天").clicked() {
+                *date_str = (chrono::Local::now().date_naive() + chrono::Duration::days(1))
+                    .format("%Y-%m-%d")
+                    .to_string();
+            }
         });
 
         ui.add_space(4.0);
@@ -311,6 +350,7 @@ fn show_profile_detail(
 }
 
 fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPlan, String> {
+    let start_date = parse_start_date(input.data_date.as_deref())?;
     let height_cm = input.height_cm.filter(|v| *v > 0.0).ok_or("请填写身高")?;
     let weight_kg = input.weight_kg.filter(|v| *v > 0.0).ok_or("请填写体重")?;
     let height_m = height_cm / 100.0;
@@ -361,6 +401,7 @@ fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPla
 
     Ok(FitnessPlan {
         generated_at: Utc::now(),
+        start_date: start_date.format("%Y-%m-%d").to_string(),
         bmi: Some(bmi),
         health_summary: summary,
         phase,
@@ -528,7 +569,8 @@ fn sync_plan_to_todo(todo: &mut TodoState, person: &str, plan: &FitnessPlan) {
     let section_name = format!("健身 - {person}");
     let section_id = get_or_create_section_in_folder(todo, &section_name, folder_id);
 
-    let today = chrono::Local::now().date_naive();
+    let today = NaiveDate::parse_from_str(&plan.start_date, "%Y-%m-%d")
+        .unwrap_or_else(|_| chrono::Local::now().date_naive());
     for day in &plan.weekly_training_plan {
         if day.title.contains("休息") {
             continue;
@@ -545,6 +587,15 @@ fn sync_plan_to_todo(todo: &mut TodoState, person: &str, plan: &FitnessPlan) {
     }
 
     todo.save_to_file();
+}
+
+fn parse_start_date(input: Option<&str>) -> Result<NaiveDate, String> {
+    let s = input.unwrap_or("").trim();
+    if s.is_empty() {
+        return Ok(chrono::Local::now().date_naive());
+    }
+    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .map_err(|_| "创建数据时间格式应为 YYYY-MM-DD".to_string())
 }
 
 fn local_date_to_utc_end_of_day(date: chrono::NaiveDate) -> Option<chrono::DateTime<chrono::Utc>> {

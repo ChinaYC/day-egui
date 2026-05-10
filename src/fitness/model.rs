@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -35,6 +35,7 @@ pub struct FitnessProfileInput {
     pub training_condition: Option<TrainingCondition>,
     pub training_time_window: Option<String>,
     pub weekly_training_days_goal: Option<u8>,
+    pub data_date: Option<String>,
 }
 
 impl Default for FitnessProfileInput {
@@ -50,6 +51,7 @@ impl Default for FitnessProfileInput {
             training_condition: None,
             training_time_window: None,
             weekly_training_days_goal: Some(3),
+            data_date: Some(default_today_string()),
         }
     }
 }
@@ -58,6 +60,8 @@ impl Default for FitnessProfileInput {
 pub struct FitnessProfile {
     pub id: Uuid,
     pub name: String,
+    #[serde(default = "utc_now")]
+    pub created_at: DateTime<Utc>,
     #[serde(default)]
     pub input: FitnessProfileInput,
     #[serde(default)]
@@ -69,6 +73,7 @@ impl FitnessProfile {
         Self {
             id: Uuid::new_v4(),
             name,
+            created_at: utc_now(),
             input: FitnessProfileInput::default(),
             last_plan: None,
         }
@@ -78,6 +83,7 @@ impl FitnessProfile {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FitnessPlan {
     pub generated_at: DateTime<Utc>,
+    pub start_date: String,
     pub bmi: Option<f32>,
     pub health_summary: Vec<String>,
     pub phase: FitnessPhase,
@@ -101,4 +107,12 @@ pub struct DietPlan {
     pub daily_fat_g_per_kg: f32,
     pub daily_carbs_g_per_kg: f32,
     pub structure: Vec<String>,
+}
+
+fn utc_now() -> DateTime<Utc> {
+    Utc::now()
+}
+
+fn default_today_string() -> String {
+    Local::now().format("%Y-%m-%d").to_string()
 }
