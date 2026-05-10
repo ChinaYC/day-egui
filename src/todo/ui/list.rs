@@ -162,6 +162,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     item.completed = completed;
                                     if item.completed {
                                         item.reminder_sent = true;
+                                    } else if let Some(rule) = item.reminder_repeat {
+                                        if let Some(next) =
+                                            crate::todo::reminders::next_reminder_from_repeat(
+                                                rule,
+                                                chrono::Utc::now(),
+                                            )
+                                        {
+                                            item.reminder_at = Some(next);
+                                        }
+                                        item.reminder_sent = false;
                                     } else if item.reminder_at.is_some() {
                                         item.reminder_sent = false;
                                     }
@@ -286,6 +296,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                             }
                                         }
 
+                                        if let Some(rule_text) = item
+                                            .reminder_repeat
+                                            .and_then(|_| item.reminder_display_string())
+                                        {
+                                            ui.label(
+                                                egui::RichText::new(format!("⟳ {rule_text}"))
+                                                    .size(10.0)
+                                                    .color(egui::Color32::GRAY),
+                                            );
+                                        }
                                         if let Some(reminder_text) = item.reminder_at_local_string()
                                         {
                                             ui.label(
@@ -472,12 +492,12 @@ fn item_matches_filters(
     match state.filter_reminder {
         FilterReminder::All => {}
         FilterReminder::WithReminder => {
-            if item.reminder_at.is_none() {
+            if item.reminder_at.is_none() && item.reminder_repeat.is_none() {
                 return false;
             }
         }
         FilterReminder::WithoutReminder => {
-            if item.reminder_at.is_some() {
+            if item.reminder_at.is_some() || item.reminder_repeat.is_some() {
                 return false;
             }
         }

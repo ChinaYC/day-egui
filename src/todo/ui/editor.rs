@@ -144,7 +144,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             )
                         else {
                             state.edit_error_msg = Some(
-                                "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h"
+                                "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 周二 9:00 / 每周二 9:00 / 20:00 / +2h"
                                     .to_string(),
                             );
                             return;
