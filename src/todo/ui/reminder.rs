@@ -18,7 +18,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         .show(ui.ctx(), |ui| {
             ui.label(format!("任务: {}", item_title));
             ui.add_space(8.0);
-            ui.label("输入提醒时间：YYYY-MM-DD HH:MM");
+            ui.label("输入提醒：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h");
             ui.text_edit_singleline(&mut state.reminder_input);
             if let Some(err) = &state.reminder_error_msg {
                 ui.label(egui::RichText::new(err).color(egui::Color32::RED));
@@ -51,8 +51,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     let Some(parsed) =
                         crate::todo::reminders::parse_local_datetime_to_utc(&state.reminder_input)
                     else {
-                        state.reminder_error_msg =
-                            Some("时间格式不正确，请用 YYYY-MM-DD HH:MM".to_string());
+                        state.reminder_error_msg = Some(
+                            "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h"
+                                .to_string(),
+                        );
                         return;
                     };
 

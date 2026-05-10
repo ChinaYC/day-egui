@@ -341,8 +341,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 &state.new_task_due,
                             )
                         else {
-                            state.new_task_error_msg =
-                                Some("到期日格式应为 YYYY-MM-DD".to_string());
+                            state.new_task_error_msg = Some(
+                                "到期日格式：YYYY-MM-DD / MM-DD / 5月10日 / 今天 / 明天"
+                                    .to_string(),
+                            );
                             return;
                         };
                         Some(parsed)
@@ -354,8 +356,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         let Some(parsed) = crate::todo::reminders::parse_local_datetime_to_utc(
                             &state.new_task_reminder,
                         ) else {
-                            state.new_task_error_msg =
-                                Some("提醒时间格式应为 YYYY-MM-DD HH:MM".to_string());
+                            state.new_task_error_msg = Some(
+                                "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h"
+                                    .to_string(),
+                            );
                             return;
                         };
                         if parsed <= chrono::Utc::now() {
@@ -392,10 +396,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.text_edit_singleline(&mut state.new_task_due);
-            ui.label("到期日 (Due, YYYY-MM-DD, 可选)");
+            ui.label("到期日 (Due, YYYY-MM-DD/今天/明天, 可选)");
             ui.add_space(12.0);
             ui.text_edit_singleline(&mut state.new_task_reminder);
-            ui.label("提醒 (Reminder, YYYY-MM-DD HH:MM, 可选)");
+            ui.label("提醒 (Reminder, 支持中文/相对时间, 可选)");
             ui.add_space(12.0);
             ui.text_edit_singleline(&mut state.new_task_tags);
             ui.label("标签 (Tags, 可选)");

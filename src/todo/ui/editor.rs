@@ -76,11 +76,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             state.edit_priority_input = p;
 
             ui.add_space(6.0);
-            ui.label("到期日 (Due, YYYY-MM-DD):");
+            ui.label("到期日 (Due, YYYY-MM-DD/今天/明天):");
             ui.text_edit_singleline(&mut state.edit_due_input);
 
             ui.add_space(6.0);
-            ui.label("提醒 (Reminder, YYYY-MM-DD HH:MM):");
+            ui.label("提醒 (Reminder, 支持中文/相对时间):");
             ui.text_edit_singleline(&mut state.edit_reminder_input);
 
             if let Some(err) = &state.edit_error_msg {
@@ -120,7 +120,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 &state.edit_due_input,
                             )
                         else {
-                            state.edit_error_msg = Some("到期日格式应为 YYYY-MM-DD".to_string());
+                            state.edit_error_msg = Some(
+                                "到期日格式：YYYY-MM-DD / MM-DD / 5月10日 / 今天 / 明天"
+                                    .to_string(),
+                            );
                             return;
                         };
                         Some(parsed)
@@ -137,8 +140,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         let Some(parsed) = crate::todo::reminders::parse_local_datetime_to_utc(
                             &state.edit_reminder_input,
                         ) else {
-                            state.edit_error_msg =
-                                Some("提醒时间格式不正确，请用 YYYY-MM-DD HH:MM".to_string());
+                            state.edit_error_msg = Some(
+                                "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h"
+                                    .to_string(),
+                            );
                             return;
                         };
                         if parsed <= chrono::Utc::now() {
