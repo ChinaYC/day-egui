@@ -1,0 +1,104 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum Sex {
+    Male,
+    Female,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum TrainingCondition {
+    Equipment,
+    Swimming,
+    Home,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum FitnessPhase {
+    FatLoss,
+    MuscleGain,
+    Maintenance,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct FitnessProfileInput {
+    pub height_cm: Option<f32>,
+    pub weight_kg: Option<f32>,
+    pub body_fat_pct: Option<f32>,
+    pub visceral_fat_level: Option<f32>,
+    pub skeletal_muscle_kg: Option<f32>,
+    pub age: Option<u8>,
+    pub sex: Option<Sex>,
+    pub training_condition: Option<TrainingCondition>,
+    pub training_time_window: Option<String>,
+    pub weekly_training_days_goal: Option<u8>,
+}
+
+impl Default for FitnessProfileInput {
+    fn default() -> Self {
+        Self {
+            height_cm: None,
+            weight_kg: None,
+            body_fat_pct: None,
+            visceral_fat_level: None,
+            skeletal_muscle_kg: None,
+            age: None,
+            sex: None,
+            training_condition: None,
+            training_time_window: None,
+            weekly_training_days_goal: Some(3),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FitnessProfile {
+    pub id: Uuid,
+    pub name: String,
+    #[serde(default)]
+    pub input: FitnessProfileInput,
+    #[serde(default)]
+    pub last_plan: Option<FitnessPlan>,
+}
+
+impl FitnessProfile {
+    pub fn new(name: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            input: FitnessProfileInput::default(),
+            last_plan: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FitnessPlan {
+    pub generated_at: DateTime<Utc>,
+    pub bmi: Option<f32>,
+    pub health_summary: Vec<String>,
+    pub phase: FitnessPhase,
+    pub need_daily_training: bool,
+    pub recommended_weekly_training_days: u8,
+    pub weekly_training_plan: Vec<DailyWorkoutPlan>,
+    pub weekly_diet_suggestions: DietPlan,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DailyWorkoutPlan {
+    pub day_index: u8,
+    pub title: String,
+    pub duration_min: u16,
+    pub workout: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DietPlan {
+    pub daily_protein_g_per_kg: f32,
+    pub daily_fat_g_per_kg: f32,
+    pub daily_carbs_g_per_kg: f32,
+    pub structure: Vec<String>,
+}

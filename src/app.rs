@@ -1,3 +1,4 @@
+use crate::fitness::FitnessState;
 use crate::leetcode::LeetCodeState;
 use crate::todo::{ThemeMode, TodoState};
 
@@ -5,6 +6,7 @@ use crate::todo::{ThemeMode, TodoState};
 pub enum AppRoute {
     LeetCode,
     Todo,
+    Fitness,
 }
 
 impl Default for AppRoute {
@@ -20,6 +22,7 @@ pub struct TemplateApp {
     route: AppRoute,
     leetcode_state: LeetCodeState,
     todo_state: TodoState,
+    fitness_state: FitnessState,
     #[serde(skip)]
     system_visuals: Option<egui::Visuals>,
 }
@@ -30,6 +33,7 @@ impl Default for TemplateApp {
             route: AppRoute::default(),
             leetcode_state: LeetCodeState::default(),
             todo_state: TodoState::default(),
+            fitness_state: FitnessState::default(),
             system_visuals: None,
         }
     }
@@ -152,6 +156,13 @@ impl eframe::App for TemplateApp {
                     {
                         self.route = AppRoute::Todo;
                     }
+                    ui.add_space(8.0);
+                    if ui
+                        .selectable_label(self.route == AppRoute::Fitness, "健身训练")
+                        .clicked()
+                    {
+                        self.route = AppRoute::Fitness;
+                    }
                 });
 
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -168,6 +179,15 @@ impl eframe::App for TemplateApp {
             }
             AppRoute::Todo => {
                 self.todo_state.ui(ui);
+            }
+            AppRoute::Fitness => {
+                let mut changed = false;
+                crate::fitness::ui::show(
+                    &mut self.fitness_state,
+                    ui,
+                    &mut self.todo_state,
+                    &mut changed,
+                );
             }
         });
     }
