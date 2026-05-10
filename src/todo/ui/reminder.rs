@@ -35,6 +35,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     if let Some(item) = state.items.iter_mut().find(|i| i.id == item_id) {
                         item.reminder_at = None;
                         item.reminder_sent = false;
+                        item.reminder_repeat = None;
                         *state_changed = true;
                     }
                     state.editing_reminder = None;
@@ -48,8 +49,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         return;
                     }
 
-                    let Some(parsed) =
-                        crate::todo::reminders::parse_local_datetime_to_utc(&state.reminder_input)
+                    let Some((parsed, repeat)) =
+                        crate::todo::reminders::parse_local_reminder_to_utc_and_repeat(
+                            &state.reminder_input,
+                        )
                     else {
                         state.reminder_error_msg = Some(
                             "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h"
@@ -67,6 +70,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     if let Some(item) = state.items.iter_mut().find(|i| i.id == item_id) {
                         item.reminder_at = Some(parsed);
                         item.reminder_sent = false;
+                        item.reminder_repeat = repeat;
                         *state_changed = true;
                     }
                     state.editing_reminder = None;

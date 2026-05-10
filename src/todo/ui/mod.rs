@@ -43,7 +43,7 @@ impl TodoState {
                             self.edit_section_input = item.section_id;
                             self.edit_due_input = item.due_at_local_string().unwrap_or_default();
                             self.edit_reminder_input =
-                                item.reminder_at_local_string().unwrap_or_default();
+                                item.reminder_display_string().unwrap_or_default();
                             self.edit_priority_input = item.priority;
                         }
                     }
@@ -57,7 +57,7 @@ impl TodoState {
                             .items
                             .iter()
                             .find(|i| i.id == item_id)
-                            .and_then(|i| i.reminder_at_local_string())
+                            .and_then(|i| i.reminder_display_string())
                             .unwrap_or_default();
                     }
                 }
@@ -79,7 +79,19 @@ impl TodoState {
                         let before = item.clone();
                         item.deleted_at = None;
                         if item.reminder_at.is_some() && !item.completed {
-                            item.reminder_sent = false;
+                            if let Some(rule) = item.reminder_repeat {
+                                if let Some(next) =
+                                    crate::todo::reminders::next_reminder_from_repeat(
+                                        rule,
+                                        chrono::Utc::now(),
+                                    )
+                                {
+                                    item.reminder_at = Some(next);
+                                    item.reminder_sent = false;
+                                }
+                            } else {
+                                item.reminder_sent = false;
+                            }
                         }
                         self.push_undo_replace_item(item_id, before);
                         self.selected_items.remove(&item_id);

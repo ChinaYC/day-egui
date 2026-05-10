@@ -350,12 +350,15 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         Some(parsed)
                     };
 
+                    let mut reminder_repeat = None;
                     let reminder_at = if state.new_task_reminder.trim().is_empty() {
                         None
                     } else {
-                        let Some(parsed) = crate::todo::reminders::parse_local_datetime_to_utc(
-                            &state.new_task_reminder,
-                        ) else {
+                        let Some((parsed, repeat)) =
+                            crate::todo::reminders::parse_local_reminder_to_utc_and_repeat(
+                                &state.new_task_reminder,
+                            )
+                        else {
                             state.new_task_error_msg = Some(
                                 "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h"
                                     .to_string(),
@@ -366,6 +369,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             state.new_task_error_msg = Some("提醒时间需为未来时间".to_string());
                             return;
                         }
+                        reminder_repeat = repeat;
                         Some(parsed)
                     };
 
@@ -373,6 +377,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     item.due_at = due_at;
                     item.reminder_at = reminder_at;
                     item.reminder_sent = item.reminder_at.is_none();
+                    item.reminder_repeat = reminder_repeat;
                     item.priority = state.new_task_priority.min(3);
                     item.tags = tags;
                     state.items.push(item);
@@ -457,6 +462,13 @@ fn apply_complete(state: &mut TodoState, completed: bool, state_changed: &mut bo
             item.completed = completed;
             if item.completed {
                 item.reminder_sent = true;
+            } else if let Some(rule) = item.reminder_repeat {
+                if let Some(next) =
+                    crate::todo::reminders::next_reminder_from_repeat(rule, chrono::Utc::now())
+                {
+                    item.reminder_at = Some(next);
+                }
+                item.reminder_sent = false;
             } else if item.reminder_at.is_some() {
                 item.reminder_sent = false;
             }

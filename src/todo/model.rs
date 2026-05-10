@@ -2,6 +2,11 @@ use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum ReminderRepeat {
+    Weekly { weekday: u8, hour: u8, minute: u8 },
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TodoItem {
     pub id: Uuid,
@@ -20,6 +25,8 @@ pub struct TodoItem {
     pub reminder_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub reminder_sent: bool,
+    #[serde(default)]
+    pub reminder_repeat: Option<ReminderRepeat>,
 
     #[serde(default)]
     pub due_at: Option<DateTime<Utc>>,
@@ -53,6 +60,7 @@ impl TodoItem {
             section_id,
             reminder_at: None,
             reminder_sent: false,
+            reminder_repeat: None,
             due_at: None,
             priority: default_priority(),
             deleted_at: None,
@@ -77,6 +85,7 @@ impl TodoItem {
             section_id,
             reminder_at: None,
             reminder_sent: false,
+            reminder_repeat: None,
             due_at: None,
             priority: 3,
             deleted_at: None,
@@ -93,6 +102,30 @@ impl TodoItem {
                 .format("%Y-%m-%d %H:%M")
                 .to_string()
         })
+    }
+
+    pub fn reminder_display_string(&self) -> Option<String> {
+        if let Some(rule) = self.reminder_repeat {
+            match rule {
+                ReminderRepeat::Weekly {
+                    weekday,
+                    hour,
+                    minute,
+                } => {
+                    let day = match weekday {
+                        0 => "周一",
+                        1 => "周二",
+                        2 => "周三",
+                        3 => "周四",
+                        4 => "周五",
+                        5 => "周六",
+                        _ => "周日",
+                    };
+                    return Some(format!("每{day} {:02}:{:02}", hour, minute));
+                }
+            }
+        }
+        self.reminder_at_local_string()
     }
 
     pub fn due_at_local_string(&self) -> Option<String> {

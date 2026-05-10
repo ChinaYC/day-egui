@@ -129,6 +129,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         Some(parsed)
                     };
 
+                    let mut reminder_repeat = None;
                     let reminder_at = if state.edit_reminder_input.trim().is_empty() {
                         None
                     } else {
@@ -137,9 +138,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 Some("已完成任务不会提醒，请先取消完成状态".to_string());
                             return;
                         }
-                        let Some(parsed) = crate::todo::reminders::parse_local_datetime_to_utc(
-                            &state.edit_reminder_input,
-                        ) else {
+                        let Some((parsed, repeat)) =
+                            crate::todo::reminders::parse_local_reminder_to_utc_and_repeat(
+                                &state.edit_reminder_input,
+                            )
+                        else {
                             state.edit_error_msg = Some(
                                 "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h"
                                     .to_string(),
@@ -151,6 +154,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 Some("提醒时间已过去，请设置未来时间".to_string());
                             return;
                         }
+                        reminder_repeat = repeat;
                         Some(parsed)
                     };
 
@@ -163,6 +167,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         item.priority = state.edit_priority_input.min(3);
                         item.reminder_at = reminder_at;
                         item.reminder_sent = item.completed || item.reminder_at.is_none();
+                        item.reminder_repeat = if item.reminder_at.is_some() {
+                            reminder_repeat
+                        } else {
+                            None
+                        };
                         item.tags = tags;
                         state.push_undo_replace_item(item_id, before);
                         *state_changed = true;

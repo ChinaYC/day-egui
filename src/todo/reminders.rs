@@ -4,10 +4,16 @@ use chrono::{
     DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Utc, Weekday,
 };
 
-use super::{TodoState, notifications};
+use super::{TodoState, model::ReminderRepeat, notifications};
 
 pub fn parse_local_datetime_to_utc(input: &str) -> Option<DateTime<Utc>> {
     parse_human_datetime_to_utc(input)
+}
+
+pub fn parse_local_reminder_to_utc_and_repeat(
+    input: &str,
+) -> Option<(DateTime<Utc>, Option<ReminderRepeat>)> {
+    parse_human_reminder_to_utc_and_repeat(input)
 }
 
 pub fn parse_local_date_to_utc_end_of_day(input: &str) -> Option<DateTime<Utc>> {
@@ -18,6 +24,12 @@ pub fn parse_local_date_to_utc_end_of_day(input: &str) -> Option<DateTime<Utc>> 
 }
 
 fn parse_human_datetime_to_utc(input: &str) -> Option<DateTime<Utc>> {
+    parse_human_reminder_to_utc_and_repeat(input).map(|(dt, _)| dt)
+}
+
+fn parse_human_reminder_to_utc_and_repeat(
+    input: &str,
+) -> Option<(DateTime<Utc>, Option<ReminderRepeat>)> {
     let s = input.trim();
     if s.is_empty() {
         return None;
@@ -25,51 +37,53 @@ fn parse_human_datetime_to_utc(input: &str) -> Option<DateTime<Utc>> {
 
     if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M") {
         let local = Local.from_local_datetime(&naive).single()?;
-        return Some(local.with_timezone(&Utc));
+        return Some((local.with_timezone(&Utc), None));
     }
     if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y/%m/%d %H:%M") {
         let local = Local.from_local_datetime(&naive).single()?;
-        return Some(local.with_timezone(&Utc));
+        return Some((local.with_timezone(&Utc), None));
     }
     if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y.%m.%d %H:%M") {
         let local = Local.from_local_datetime(&naive).single()?;
-        return Some(local.with_timezone(&Utc));
+        return Some((local.with_timezone(&Utc), None));
     }
 
     if let Some(dt) = parse_relative_datetime(s) {
-        return Some(dt);
+        return Some((dt, None));
     }
 
     if let Some((date, rest)) = parse_relative_day_prefix(s) {
         if let Some((h, m)) = parse_human_time(rest) {
-            return local_date_time_to_utc(date, h, m);
+            return local_date_time_to_utc(date, h, m).map(|dt| (dt, None));
         }
-        return local_date_time_to_utc(date, 9, 0);
+        return local_date_time_to_utc(date, 9, 0).map(|dt| (dt, None));
     }
 
-    if let Some((date, rest)) = parse_weekday_prefix(s) {
-        if let Some((h, m)) = parse_human_time(rest) {
-            let Some(mut dt) = local_date_time_to_utc(date, h, m) else {
-                return None;
-            };
-            if dt <= Utc::now() {
-                dt = dt + Duration::days(7);
-            }
-            return Some(dt);
-        }
-        let Some(mut dt) = local_date_time_to_utc(date, 9, 0) else {
+    if let Some((date, rest, is_every)) = parse_weekday_prefix_with_every(s) {
+        let (h, m) = parse_human_time(rest).unwrap_or((9, 0));
+        let Some(mut dt) = local_date_time_to_utc(date, h, m) else {
             return None;
         };
         if dt <= Utc::now() {
             dt = dt + Duration::days(7);
         }
-        return Some(dt);
+        let repeat = if is_every {
+            let weekday = date.weekday().num_days_from_monday() as u8;
+            Some(ReminderRepeat::Weekly {
+                weekday,
+                hour: h as u8,
+                minute: m as u8,
+            })
+        } else {
+            None
+        };
+        return Some((dt, repeat));
     }
 
     if let Some((date, time_s)) = split_date_and_time(s) {
         let date = parse_date_token(date)?;
         let (h, m) = parse_human_time(time_s)?;
-        return local_date_time_to_utc(date, h, m);
+        return local_date_time_to_utc(date, h, m).map(|dt| (dt, None));
     }
 
     if let Some((h, m)) = parse_human_time(s) {
@@ -81,7 +95,7 @@ fn parse_human_datetime_to_utc(input: &str) -> Option<DateTime<Utc>> {
         if dt <= Utc::now() {
             dt = dt + Duration::days(1);
         }
-        return Some(dt);
+        return Some((dt, None));
     }
 
     None
@@ -154,25 +168,32 @@ const WEEKDAY_ALIAS_GROUPS: &[(Weekday, &[&str])] = &[
     (Weekday::Sun, SUN_ALIASES),
 ];
 
-fn parse_weekday_prefix(s: &str) -> Option<(NaiveDate, &str)> {
+fn parse_weekday_prefix_with_every(s: &str) -> Option<(NaiveDate, &str, bool)> {
     let s = s.trim_start();
-    let (weekday, rest) = parse_weekday_token_and_rest(s)?;
+    let (weekday, rest, is_every) = parse_weekday_token_and_rest_with_every(s)?;
 
     let now_local = Local::now();
     let base = NaiveDate::from_ymd_opt(now_local.year(), now_local.month(), now_local.day())?;
     let date = next_weekday_date_from(base, weekday, true);
-    Some((date, rest))
+    Some((date, rest, is_every))
 }
 
 fn parse_weekday_token_and_rest(s: &str) -> Option<(Weekday, &str)> {
+    parse_weekday_token_and_rest_with_every(s).map(|(wd, rest, _)| (wd, rest))
+}
+
+fn parse_weekday_token_and_rest_with_every(s: &str) -> Option<(Weekday, &str, bool)> {
     let s = s.trim_start();
     let lower = s.to_ascii_lowercase();
 
     let mut start_index = 0usize;
+    let mut is_every = false;
     if s.starts_with('每') {
         start_index = '每'.len_utf8();
+        is_every = true;
     } else if lower.starts_with("every ") {
         start_index = "every ".len();
+        is_every = true;
     }
 
     let tail = s[start_index..].trim_start();
@@ -181,7 +202,7 @@ fn parse_weekday_token_and_rest(s: &str) -> Option<(Weekday, &str)> {
     for (weekday, aliases) in WEEKDAY_ALIAS_GROUPS {
         for alias in *aliases {
             if lower_tail.starts_with(alias) {
-                return Some((*weekday, tail[alias.len()..].trim()));
+                return Some((*weekday, tail[alias.len()..].trim(), is_every));
             }
         }
     }
@@ -441,6 +462,13 @@ pub fn write_reminders_ics(state: &TodoState) {
     let _ = tmp.persist(path);
 }
 
+pub fn next_reminder_from_repeat(
+    repeat: ReminderRepeat,
+    after_utc: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    compute_next_reminder_from_repeat(Some(repeat), after_utc)
+}
+
 pub fn poll_due_reminders_and_notify(state: &mut TodoState) -> bool {
     let now = Utc::now();
     let mut changed = false;
@@ -452,24 +480,80 @@ pub fn poll_due_reminders_and_notify(state: &mut TodoState) -> bool {
         if item.completed {
             continue;
         }
-        let Some(at) = item.reminder_at else {
-            continue;
-        };
-        if item.reminder_sent {
+        if item.reminder_at.is_none() {
+            if let Some(next) = compute_next_reminder_from_repeat(item.reminder_repeat, now) {
+                item.reminder_at = Some(next);
+                item.reminder_sent = false;
+                changed = true;
+            }
             continue;
         }
+        let at = item.reminder_at.unwrap_or(now);
         if at > now {
+            continue;
+        }
+        if item.reminder_sent {
             continue;
         }
 
         let title = "Todo 提醒 (Todo Reminder)";
         let body = item.title.as_str();
         notifications::send_system_notification(title, body);
-        item.reminder_sent = true;
+        if let Some(next) = compute_next_reminder_from_repeat(item.reminder_repeat, now) {
+            item.reminder_at = Some(next);
+            item.reminder_sent = false;
+        } else {
+            item.reminder_sent = true;
+        }
         changed = true;
     }
 
     changed
+}
+
+fn compute_next_reminder_from_repeat(
+    repeat: Option<ReminderRepeat>,
+    after_utc: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    match repeat? {
+        ReminderRepeat::Weekly {
+            weekday,
+            hour,
+            minute,
+        } => next_weekly_reminder_utc(weekday, hour, minute, after_utc),
+    }
+}
+
+fn next_weekly_reminder_utc(
+    weekday: u8,
+    hour: u8,
+    minute: u8,
+    after_utc: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    let target = weekday_from_u8(weekday)?;
+    let after_local = after_utc.with_timezone(&Local);
+    let base = NaiveDate::from_ymd_opt(after_local.year(), after_local.month(), after_local.day())?;
+    let date = next_weekday_date_from(base, target, true);
+    let Some(mut next) = local_date_time_to_utc(date, hour as u32, minute as u32) else {
+        return None;
+    };
+    if next <= after_utc {
+        next = next + Duration::days(7);
+    }
+    Some(next)
+}
+
+fn weekday_from_u8(n: u8) -> Option<Weekday> {
+    match n {
+        0 => Some(Weekday::Mon),
+        1 => Some(Weekday::Tue),
+        2 => Some(Weekday::Wed),
+        3 => Some(Weekday::Thu),
+        4 => Some(Weekday::Fri),
+        5 => Some(Weekday::Sat),
+        6 => Some(Weekday::Sun),
+        _ => None,
+    }
 }
 
 fn format_ics_datetime(dt: DateTime<Utc>) -> String {
@@ -533,5 +617,16 @@ mod tests {
             next_weekday_date_from(base, Weekday::Tue, true),
             NaiveDate::from_ymd_opt(2026, 5, 12).unwrap()
         );
+    }
+
+    #[test]
+    fn weekday_every_flag() {
+        let (wd, _, every) = parse_weekday_token_and_rest_with_every("每周二 9:00").unwrap();
+        assert_eq!(wd, Weekday::Tue);
+        assert!(every);
+
+        let (wd, _, every) = parse_weekday_token_and_rest_with_every("周二 9:00").unwrap();
+        assert_eq!(wd, Weekday::Tue);
+        assert!(!every);
     }
 }
