@@ -1,6 +1,8 @@
 use std::io::Write;
 
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{
+    DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Utc, Weekday,
+};
 
 use super::{TodoState, notifications};
 
@@ -43,6 +45,25 @@ fn parse_human_datetime_to_utc(input: &str) -> Option<DateTime<Utc>> {
             return local_date_time_to_utc(date, h, m);
         }
         return local_date_time_to_utc(date, 9, 0);
+    }
+
+    if let Some((date, rest)) = parse_weekday_prefix(s) {
+        if let Some((h, m)) = parse_human_time(rest) {
+            let Some(mut dt) = local_date_time_to_utc(date, h, m) else {
+                return None;
+            };
+            if dt <= Utc::now() {
+                dt = dt + Duration::days(7);
+            }
+            return Some(dt);
+        }
+        let Some(mut dt) = local_date_time_to_utc(date, 9, 0) else {
+            return None;
+        };
+        if dt <= Utc::now() {
+            dt = dt + Duration::days(7);
+        }
+        return Some(dt);
     }
 
     if let Some((date, time_s)) = split_date_and_time(s) {
@@ -96,6 +117,97 @@ fn parse_relative_day_prefix(s: &str) -> Option<(NaiveDate, &str)> {
     let now_local = Local::now();
     let base = NaiveDate::from_ymd_opt(now_local.year(), now_local.month(), now_local.day())?;
     Some((base + Duration::days(days), rest.trim()))
+}
+
+const WEEKDAY_ALIASES: &[(&str, Weekday)] = &[
+    ("周一", Weekday::Mon),
+    ("星期一", Weekday::Mon),
+    ("礼拜一", Weekday::Mon),
+    ("周二", Weekday::Tue),
+    ("星期二", Weekday::Tue),
+    ("礼拜二", Weekday::Tue),
+    ("周三", Weekday::Wed),
+    ("星期三", Weekday::Wed),
+    ("礼拜三", Weekday::Wed),
+    ("周四", Weekday::Thu),
+    ("星期四", Weekday::Thu),
+    ("礼拜四", Weekday::Thu),
+    ("周五", Weekday::Fri),
+    ("星期五", Weekday::Fri),
+    ("礼拜五", Weekday::Fri),
+    ("周六", Weekday::Sat),
+    ("星期六", Weekday::Sat),
+    ("礼拜六", Weekday::Sat),
+    ("周日", Weekday::Sun),
+    ("周天", Weekday::Sun),
+    ("星期日", Weekday::Sun),
+    ("星期天", Weekday::Sun),
+    ("礼拜日", Weekday::Sun),
+    ("礼拜天", Weekday::Sun),
+    ("mon", Weekday::Mon),
+    ("monday", Weekday::Mon),
+    ("tue", Weekday::Tue),
+    ("tues", Weekday::Tue),
+    ("tuesday", Weekday::Tue),
+    ("wed", Weekday::Wed),
+    ("wednesday", Weekday::Wed),
+    ("thu", Weekday::Thu),
+    ("thur", Weekday::Thu),
+    ("thurs", Weekday::Thu),
+    ("thursday", Weekday::Thu),
+    ("fri", Weekday::Fri),
+    ("friday", Weekday::Fri),
+    ("sat", Weekday::Sat),
+    ("saturday", Weekday::Sat),
+    ("sun", Weekday::Sun),
+    ("sunday", Weekday::Sun),
+];
+
+fn parse_weekday_prefix(s: &str) -> Option<(NaiveDate, &str)> {
+    let s = s.trim_start();
+    let (weekday, rest) = parse_weekday_token_and_rest(s)?;
+
+    let now_local = Local::now();
+    let base = NaiveDate::from_ymd_opt(now_local.year(), now_local.month(), now_local.day())?;
+    let date = next_weekday_date_from(base, weekday, true);
+    Some((date, rest))
+}
+
+fn parse_weekday_token_and_rest(s: &str) -> Option<(Weekday, &str)> {
+    let s = s.trim_start();
+    let lower = s.to_ascii_lowercase();
+
+    let mut start_index = 0usize;
+    if s.starts_with('每') {
+        start_index = '每'.len_utf8();
+    } else if lower.starts_with("every ") {
+        start_index = "every ".len();
+    }
+
+    let tail = s[start_index..].trim_start();
+    let lower_tail = tail.to_ascii_lowercase();
+
+    for (alias, weekday) in WEEKDAY_ALIASES {
+        if tail.starts_with(alias) {
+            return Some((*weekday, tail[alias.len()..].trim()));
+        }
+        if lower_tail.starts_with(alias) {
+            return Some((*weekday, tail[alias.len()..].trim()));
+        }
+    }
+
+    None
+}
+
+fn next_weekday_date_from(base: NaiveDate, target: Weekday, include_today: bool) -> NaiveDate {
+    let current = base.weekday();
+    let cur = current.num_days_from_monday() as i32;
+    let tar = target.num_days_from_monday() as i32;
+    let mut delta = (tar - cur + 7) % 7;
+    if delta == 0 && !include_today {
+        delta = 7;
+    }
+    base + Duration::days(delta as i64)
 }
 
 fn local_date_time_to_utc(date: NaiveDate, hour: u32, minute: u32) -> Option<DateTime<Utc>> {
@@ -152,6 +264,10 @@ fn parse_human_date(input: &str) -> Option<NaiveDate> {
     }
     if s == "后天" {
         return Some(today + Duration::days(2));
+    }
+
+    if let Some((weekday, _rest)) = parse_weekday_token_and_rest(s) {
+        return Some(next_weekday_date_from(today, weekday, true));
     }
 
     parse_date_token(s)
@@ -405,6 +521,27 @@ mod tests {
         assert_eq!(
             parse_date_token("2026.05.10"),
             Some(NaiveDate::from_ymd_opt(2026, 5, 10).unwrap())
+        );
+    }
+
+    #[test]
+    fn weekday_mapping_and_next() {
+        let (wd, _) = parse_weekday_token_and_rest("周一").unwrap();
+        assert_eq!(wd, Weekday::Mon);
+        let (wd, _) = parse_weekday_token_and_rest("每周二").unwrap();
+        assert_eq!(wd, Weekday::Tue);
+        let (wd, _) = parse_weekday_token_and_rest("every monday").unwrap();
+        assert_eq!(wd, Weekday::Mon);
+
+        let base = NaiveDate::from_ymd_opt(2026, 5, 11).unwrap();
+        assert_eq!(base.weekday(), Weekday::Mon);
+        assert_eq!(
+            next_weekday_date_from(base, Weekday::Mon, true),
+            NaiveDate::from_ymd_opt(2026, 5, 11).unwrap()
+        );
+        assert_eq!(
+            next_weekday_date_from(base, Weekday::Tue, true),
+            NaiveDate::from_ymd_opt(2026, 5, 12).unwrap()
         );
     }
 }

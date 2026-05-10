@@ -396,10 +396,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.text_edit_singleline(&mut state.new_task_due);
-            ui.label("到期日 (Due, YYYY-MM-DD/今天/明天, 可选)");
+            ui.label("到期日 (Due, YYYY-MM-DD/今天/明天/周二, 可选)");
             ui.add_space(12.0);
             ui.text_edit_singleline(&mut state.new_task_reminder);
-            ui.label("提醒 (Reminder, 支持中文/相对时间, 可选)");
+            ui.label("提醒 (Reminder, 支持周几/相对时间, 可选)");
             ui.add_space(12.0);
             ui.text_edit_singleline(&mut state.new_task_tags);
             ui.label("标签 (Tags, 可选)");

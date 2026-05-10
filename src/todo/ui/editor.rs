@@ -76,11 +76,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             state.edit_priority_input = p;
 
             ui.add_space(6.0);
-            ui.label("到期日 (Due, YYYY-MM-DD/今天/明天):");
+            ui.label("到期日 (Due, YYYY-MM-DD/今天/明天/周二):");
             ui.text_edit_singleline(&mut state.edit_due_input);
 
             ui.add_space(6.0);
-            ui.label("提醒 (Reminder, 支持中文/相对时间):");
+            ui.label("提醒 (Reminder, 支持周几/相对时间):");
             ui.text_edit_singleline(&mut state.edit_reminder_input);
 
             if let Some(err) = &state.edit_error_msg {

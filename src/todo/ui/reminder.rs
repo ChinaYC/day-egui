@@ -18,7 +18,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         .show(ui.ctx(), |ui| {
             ui.label(format!("任务: {}", item_title));
             ui.add_space(8.0);
-            ui.label("输入提醒：YYYY-MM-DD HH:MM / 今天 20:00 / 明天 9:00 / 20:00 / +2h");
+            ui.label("输入提醒：YYYY-MM-DD HH:MM / 周一 20:00 / 每周二 9:00 / 20:00 / +2h");
             ui.text_edit_singleline(&mut state.reminder_input);
             if let Some(err) = &state.reminder_error_msg {
                 ui.label(egui::RichText::new(err).color(egui::Color32::RED));
