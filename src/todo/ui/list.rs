@@ -53,6 +53,13 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         .show(ui, |ui| {
             let sections_to_render: Vec<Uuid> = if let Some(active) = state.active_section {
                 vec![active]
+            } else if let Some(folder_id) = state.active_folder {
+                state
+                    .sections
+                    .iter()
+                    .filter(|s| s.folder_id == Some(folder_id))
+                    .map(|s| s.id)
+                    .collect()
             } else {
                 state.sections.iter().map(|s| s.id).collect()
             };
@@ -96,8 +103,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     let item = &mut state.items[item_index];
                     let item_id = item.id;
                     let mut drag_handle_response: Option<egui::Response> = None;
-                    let can_interact = state.view_mode == TodoViewMode::Tasks && item.deleted_at.is_none();
-                    let can_drag = can_interact && state.sort_mode == SortMode::Manual;
+                    let can_interact =
+                        state.view_mode == TodoViewMode::Tasks && item.deleted_at.is_none();
+                    let can_drag = can_interact
+                        && state.sort_mode == SortMode::Manual
+                        && !state.selection_mode;
 
                     ui.vertical(|ui| {
                         let row_response = ui
@@ -105,6 +115,17 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 let mut completed = item.completed;
                                 let completed_before = item.completed;
                                 let reminder_sent_before = item.reminder_sent;
+
+                                if state.selection_mode && can_interact {
+                                    let mut selected = state.selected_items.contains(&item_id);
+                                    if ui.checkbox(&mut selected, "").changed() {
+                                        if selected {
+                                            state.selected_items.insert(item_id);
+                                        } else {
+                                            state.selected_items.remove(&item_id);
+                                        }
+                                    }
+                                }
 
                                 drag_handle_response = Some(
                                     ui.add_enabled(
@@ -141,6 +162,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     item.completed = completed;
                                     if item.completed {
                                         item.reminder_sent = true;
+                                    } else if let Some(rule) = item.reminder_repeat {
+                                        if let Some(next) =
+                                            crate::todo::reminders::next_reminder_from_repeat(
+                                                rule,
+                                                chrono::Utc::now(),
+                                            )
+                                        {
+                                            item.reminder_at = Some(next);
+                                        }
+                                        item.reminder_sent = false;
                                     } else if item.reminder_at.is_some() {
                                         item.reminder_sent = false;
                                     }
@@ -158,11 +189,18 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 } else {
                                     egui::RichText::new(&item.title)
                                 };
-                                let title_response = ui.add(
-                                    egui::Label::new(title_text).sense(egui::Sense::click()),
-                                );
+                                let title_response = ui
+                                    .add(egui::Label::new(title_text).sense(egui::Sense::click()));
                                 if can_interact && title_response.clicked() {
-                                    open_editor_for = Some(item_id);
+                                    if state.selection_mode {
+                                        if state.selected_items.contains(&item_id) {
+                                            state.selected_items.remove(&item_id);
+                                        } else {
+                                            state.selected_items.insert(item_id);
+                                        }
+                                    } else {
+                                        open_editor_for = Some(item_id);
+                                    }
                                 }
 
                                 let p = item.priority.min(3);
@@ -172,11 +210,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     2 => ("P2", egui::Color32::LIGHT_BLUE),
                                     _ => ("P3", egui::Color32::GRAY),
                                 };
-                                ui.label(
-                                    egui::RichText::new(p_text)
-                                        .size(10.0)
-                                        .color(p_color),
-                                );
+                                ui.label(egui::RichText::new(p_text).size(10.0).color(p_color));
 
                                 if item.is_automated {
                                     ui.label(
@@ -184,6 +218,23 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                             .size(10.0)
                                             .color(egui::Color32::LIGHT_GREEN),
                                     );
+                                }
+
+                                if !item.tags.is_empty() {
+                                    for tag in item.tags.iter().take(3) {
+                                        ui.label(
+                                            egui::RichText::new(format!("#{tag}"))
+                                                .size(10.0)
+                                                .color(egui::Color32::from_rgb(120, 170, 255)),
+                                        );
+                                    }
+                                    if item.tags.len() > 3 {
+                                        ui.label(
+                                            egui::RichText::new("…")
+                                                .size(10.0)
+                                                .color(egui::Color32::GRAY),
+                                        );
+                                    }
                                 }
 
                                 ui.with_layout(
@@ -208,7 +259,29 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
 
                                             let mut moved_section = item.section_id;
                                             ui.menu_button("📁", |ui| {
-                                                for section in &state.sections {
+                                                for folder in &state.folders {
+                                                    ui.collapsing(folder.name.clone(), |ui| {
+                                                        for section in
+                                                            state.sections.iter().filter(|s| {
+                                                                s.folder_id == Some(folder.id)
+                                                            })
+                                                        {
+                                                            if ui
+                                                                .button(section.name.clone())
+                                                                .clicked()
+                                                            {
+                                                                moved_section = Some(section.id);
+                                                                ui.close();
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                                ui.separator();
+                                                for section in state
+                                                    .sections
+                                                    .iter()
+                                                    .filter(|s| s.folder_id.is_none())
+                                                {
                                                     if ui.button(section.name.clone()).clicked() {
                                                         moved_section = Some(section.id);
                                                         ui.close();
@@ -223,6 +296,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                             }
                                         }
 
+                                        if let Some(rule_text) = item
+                                            .reminder_repeat
+                                            .and_then(|_| item.reminder_display_string())
+                                        {
+                                            ui.label(
+                                                egui::RichText::new(format!("⟳ {rule_text}"))
+                                                    .size(10.0)
+                                                    .color(egui::Color32::GRAY),
+                                            );
+                                        }
                                         if let Some(reminder_text) = item.reminder_at_local_string()
                                         {
                                             ui.label(
@@ -325,12 +408,19 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
     }
 }
 
-fn item_matches_filters(state: &TodoState, item: &crate::todo::model::TodoItem, query: &str) -> bool {
+fn item_matches_filters(
+    state: &TodoState,
+    item: &crate::todo::model::TodoItem,
+    query: &str,
+) -> bool {
     match state.view_mode {
         TodoViewMode::Tasks => {
             if item.deleted_at.is_some() {
                 return false;
             }
+        }
+        TodoViewMode::Planner => {
+            return false;
         }
         TodoViewMode::Trash => {
             if item.deleted_at.is_none() {
@@ -402,14 +492,21 @@ fn item_matches_filters(state: &TodoState, item: &crate::todo::model::TodoItem, 
     match state.filter_reminder {
         FilterReminder::All => {}
         FilterReminder::WithReminder => {
-            if item.reminder_at.is_none() {
+            if item.reminder_at.is_none() && item.reminder_repeat.is_none() {
                 return false;
             }
         }
         FilterReminder::WithoutReminder => {
-            if item.reminder_at.is_some() {
+            if item.reminder_at.is_some() || item.reminder_repeat.is_some() {
                 return false;
             }
+        }
+    }
+
+    if let Some(tag) = &state.active_tag {
+        let tag_l = tag.to_lowercase();
+        if !item.tags.iter().any(|t| t.to_lowercase() == tag_l) {
+            return false;
         }
     }
 

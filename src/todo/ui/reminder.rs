@@ -6,9 +6,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
     };
 
     let item = state.items.iter().find(|i| i.id == item_id);
-    let item_title = item
-        .map(|i| i.title.clone())
-        .unwrap_or_default();
+    let item_title = item.map(|i| i.title.clone()).unwrap_or_default();
     let item_completed = item.map(|i| i.completed).unwrap_or(false);
 
     let mut open = true;
@@ -20,7 +18,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         .show(ui.ctx(), |ui| {
             ui.label(format!("任务: {}", item_title));
             ui.add_space(8.0);
-            ui.label("输入提醒时间：YYYY-MM-DD HH:MM");
+            ui.label("输入提醒：YYYY-MM-DD HH:MM / 周一 20:00 / 每周二 9:00 / 20:00 / +2h");
             ui.text_edit_singleline(&mut state.reminder_input);
             if let Some(err) = &state.reminder_error_msg {
                 ui.label(egui::RichText::new(err).color(egui::Color32::RED));
@@ -37,6 +35,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     if let Some(item) = state.items.iter_mut().find(|i| i.id == item_id) {
                         item.reminder_at = None;
                         item.reminder_sent = false;
+                        item.reminder_repeat = None;
                         *state_changed = true;
                     }
                     state.editing_reminder = None;
@@ -50,11 +49,15 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         return;
                     }
 
-                    let Some(parsed) =
-                        crate::todo::reminders::parse_local_datetime_to_utc(&state.reminder_input)
+                    let Some((parsed, repeat)) =
+                        crate::todo::reminders::parse_local_reminder_to_utc_and_repeat(
+                            &state.reminder_input,
+                        )
                     else {
-                        state.reminder_error_msg =
-                            Some("时间格式不正确，请用 YYYY-MM-DD HH:MM".to_string());
+                        state.reminder_error_msg = Some(
+                            "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 周二 9:00 / 每周二 9:00 / 20:00 / +2h"
+                                .to_string(),
+                        );
                         return;
                     };
 
@@ -67,6 +70,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     if let Some(item) = state.items.iter_mut().find(|i| i.id == item_id) {
                         item.reminder_at = Some(parsed);
                         item.reminder_sent = false;
+                        item.reminder_repeat = repeat;
                         *state_changed = true;
                     }
                     state.editing_reminder = None;

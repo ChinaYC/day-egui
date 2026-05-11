@@ -1,12 +1,16 @@
+use super::daily::add_log;
 use anyhow::Result;
 use headless_chrome::Tab;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
-use super::daily::add_log;
+use std::sync::{Arc, Mutex};
 
-pub fn get_daily_problem_url(tab: &Arc<Tab>, logs: &Arc<Mutex<Vec<String>>>, _cancel_flag: &Arc<AtomicBool>) -> Result<(String, String, bool, String)> {
+pub fn get_daily_problem_url(
+    tab: &Arc<Tab>,
+    logs: &Arc<Mutex<Vec<String>>>,
+    _cancel_flag: &Arc<AtomicBool>,
+) -> Result<(String, String, bool, String)> {
     add_log(logs, "在首页尝试获取每日一题链接及打卡状态...");
-    
+
     // 我们提取四个信息：
     // 1. 每日一题的 url
     // 2. 题目名称
@@ -63,22 +67,34 @@ pub fn get_daily_problem_url(tab: &Arc<Tab>, logs: &Arc<Mutex<Vec<String>>>, _ca
         false
     ).map_err(|e| anyhow::anyhow!(e))?;
 
-    let json_str = eval_res.value
+    let json_str = eval_res
+        .value
         .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| r#"{"url":"","title":"","is_solved":false,"consecutive_days":""}"#.to_string());
-        
+        .unwrap_or_else(|| {
+            r#"{"url":"","title":"","is_solved":false,"consecutive_days":""}"#.to_string()
+        });
+
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
-    
+
     let problem_url = parsed["url"].as_str().unwrap_or("").to_string();
     let problem_title = parsed["title"].as_str().unwrap_or("").to_string();
     let is_solved = parsed["is_solved"].as_bool().unwrap_or(false);
-    let consecutive_days = parsed["consecutive_days"].as_str().unwrap_or("").to_string();
-    
+    let consecutive_days = parsed["consecutive_days"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
     if problem_url.is_empty() {
         add_log(logs, "❌ 未找到每日一题链接，请检查页面结构");
         return Err(anyhow::anyhow!("未找到每日一题链接"));
     }
 
-    add_log(logs, &format!("获取到题目: {} (是否完成: {}, 连续打卡: {}天)", problem_title, is_solved, consecutive_days));
+    add_log(
+        logs,
+        &format!(
+            "获取到题目: {} (是否完成: {}, 连续打卡: {}天)",
+            problem_title, is_solved, consecutive_days
+        ),
+    );
     Ok((problem_url, problem_title, is_solved, consecutive_days))
 }

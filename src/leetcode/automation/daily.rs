@@ -1,6 +1,6 @@
+use super::{browser, login};
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
-use super::{browser, login};
 
 // 导入重构后的模块
 use super::get_daily::get_daily_problem_url;
@@ -37,13 +37,13 @@ pub fn run_daily_flow(
 ) -> Result<String> {
     check_cancel(&cancel_flag)?;
     add_log(&logs, "正在启动浏览器... (Starting browser...)");
-    
+
     // 复用或创建浏览器实例
     let browser_inst = {
         let mut browser_lock = browser_instance.lock().unwrap();
         let mut needs_new = true;
         let mut existing_browser = None;
-        
+
         if let Some(b) = browser_lock.as_ref() {
             // 只要能获取版本号，就说明浏览器底层连接还活着
             if b.get_version().is_ok() {
@@ -51,14 +51,17 @@ pub fn run_daily_flow(
                 existing_browser = Some(b.clone());
             }
         }
-        
+
         if needs_new {
             add_log(&logs, "启动新浏览器实例 (Starting new browser instance)");
             let new_b = browser::launch_browser()?;
             *browser_lock = Some(new_b.clone());
             new_b
         } else {
-            add_log(&logs, "复用已有浏览器实例 (Reusing existing browser instance)");
+            add_log(
+                &logs,
+                "复用已有浏览器实例 (Reusing existing browser instance)",
+            );
             existing_browser.unwrap()
         }
     };
@@ -69,21 +72,29 @@ pub fn run_daily_flow(
 
     check_cancel(&cancel_flag)?;
     // 2. 获取每日一题 URL 及打卡状态
-    let (problem_url, title, is_solved, consecutive_days) = get_daily_problem_url(&active_tab, &logs, &cancel_flag)?;
-    
+    let (problem_url, title, is_solved, consecutive_days) =
+        get_daily_problem_url(&active_tab, &logs, &cancel_flag)?;
+
     // 更新 UI 状态
     *problem_title_ref.lock().unwrap() = title.clone();
-    
-    let mut display_status = if is_solved { "今日已打卡".to_string() } else { "今日未打卡".to_string() };
+
+    let mut display_status = if is_solved {
+        "今日已打卡".to_string()
+    } else {
+        "今日未打卡".to_string()
+    };
     if !consecutive_days.is_empty() {
         display_status = format!("{} (连续 {} 天)", display_status, consecutive_days);
     }
-    
+
     *checkin_status_ref.lock().unwrap() = display_status.clone();
     *daily_problem_url_ref.lock().unwrap() = problem_url.clone();
 
     if is_solved {
-        add_log(&logs, "✅ 检测到今日已打卡，流程结束 (Daily problem already solved)");
+        add_log(
+            &logs,
+            "✅ 检测到今日已打卡，流程结束 (Daily problem already solved)",
+        );
         return Ok(String::new());
     }
 

@@ -34,6 +34,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             ui.text_edit_multiline(&mut state.edit_desc_input);
 
             ui.add_space(6.0);
+            ui.label("标签 (Tags, 用逗号分隔或 #tag):");
+            ui.text_edit_singleline(&mut state.edit_tags_input);
+
+            ui.add_space(6.0);
             ui.label("分区 (Section):");
             egui::ComboBox::from_id_salt("edit_task_section")
                 .selected_text(
@@ -44,11 +48,12 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 )
                 .show_ui(ui, |ui| {
                     for section in &state.sections {
-                        ui.selectable_value(
-                            &mut state.edit_section_input,
-                            Some(section.id),
-                            section.name.clone(),
-                        );
+                        let label = section
+                            .folder_id
+                            .and_then(|fid| state.folder_name(fid).map(|f| f.to_string()))
+                            .map(|f| format!("{f} / {}", section.name))
+                            .unwrap_or_else(|| section.name.clone());
+                        ui.selectable_value(&mut state.edit_section_input, Some(section.id), label);
                     }
                 });
 
@@ -71,11 +76,11 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             state.edit_priority_input = p;
 
             ui.add_space(6.0);
-            ui.label("到期日 (Due, YYYY-MM-DD):");
+            ui.label("到期日 (Due, YYYY-MM-DD/今天/明天/周二):");
             ui.text_edit_singleline(&mut state.edit_due_input);
 
             ui.add_space(6.0);
-            ui.label("提醒 (Reminder, YYYY-MM-DD HH:MM):");
+            ui.label("提醒 (Reminder, 支持周几/相对时间):");
             ui.text_edit_singleline(&mut state.edit_reminder_input);
 
             if let Some(err) = &state.edit_error_msg {
@@ -105,6 +110,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                     let desc = state.edit_desc_input.trim().to_string();
                     let description = if desc.is_empty() { None } else { Some(desc) };
 
+                    let tags = parse_tags_input(&state.edit_tags_input);
+
                     let due_at = if state.edit_due_input.trim().is_empty() {
                         None
                     } else {
@@ -113,12 +120,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 &state.edit_due_input,
                             )
                         else {
-                            state.edit_error_msg = Some("到期日格式应为 YYYY-MM-DD".to_string());
+                            state.edit_error_msg = Some(
+                                "到期日格式：YYYY-MM-DD / MM-DD / 5月10日 / 今天 / 明天"
+                                    .to_string(),
+                            );
                             return;
                         };
                         Some(parsed)
                     };
 
+                    let mut reminder_repeat = None;
                     let reminder_at = if state.edit_reminder_input.trim().is_empty() {
                         None
                     } else {
@@ -127,17 +138,23 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 Some("已完成任务不会提醒，请先取消完成状态".to_string());
                             return;
                         }
-                        let Some(parsed) = crate::todo::reminders::parse_local_datetime_to_utc(
-                            &state.edit_reminder_input,
-                        ) else {
-                            state.edit_error_msg =
-                                Some("提醒时间格式不正确，请用 YYYY-MM-DD HH:MM".to_string());
+                        let Some((parsed, repeat)) =
+                            crate::todo::reminders::parse_local_reminder_to_utc_and_repeat(
+                                &state.edit_reminder_input,
+                            )
+                        else {
+                            state.edit_error_msg = Some(
+                                "提醒格式：YYYY-MM-DD HH:MM / 今天 20:00 / 周二 9:00 / 每周二 9:00 / 20:00 / +2h"
+                                    .to_string(),
+                            );
                             return;
                         };
                         if parsed <= chrono::Utc::now() {
-                            state.edit_error_msg = Some("提醒时间已过去，请设置未来时间".to_string());
+                            state.edit_error_msg =
+                                Some("提醒时间已过去，请设置未来时间".to_string());
                             return;
                         }
+                        reminder_repeat = repeat;
                         Some(parsed)
                     };
 
@@ -150,6 +167,12 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         item.priority = state.edit_priority_input.min(3);
                         item.reminder_at = reminder_at;
                         item.reminder_sent = item.completed || item.reminder_at.is_none();
+                        item.reminder_repeat = if item.reminder_at.is_some() {
+                            reminder_repeat
+                        } else {
+                            None
+                        };
+                        item.tags = tags;
                         state.push_undo_replace_item(item_id, before);
                         *state_changed = true;
                     }
@@ -164,4 +187,18 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         state.editing_task = None;
         state.edit_error_msg = None;
     }
+}
+
+fn parse_tags_input(input: &str) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    for raw in input.split(|c: char| c == ',' || c == '，' || c.is_whitespace() || c == '#') {
+        let t = raw.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if !tags.iter().any(|x| x.eq_ignore_ascii_case(t)) {
+            tags.push(t.to_string());
+        }
+    }
+    tags
 }

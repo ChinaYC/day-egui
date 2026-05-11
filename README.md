@@ -28,6 +28,11 @@ A lightweight, local-first productivity application built with Rust and `egui` (
 cargo run --release
 ```
 
+## 📦 打包与发布 / Packaging & Release
+
+- 本地打包脚本：`build_mac_app.sh`、`build_apk.sh`
+- GitHub Releases 自动构建与触发方式见 [docs/release.md](file:///workspace/docs/release.md)
+
 ## 📦 How to Build macOS App / 如何打包 macOS 应用
 
 You can build and package the project into a macOS `.app` bundle by running the following commands:

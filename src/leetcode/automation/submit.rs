@@ -1,9 +1,9 @@
+use super::daily::{add_log, check_cancel};
 use anyhow::Result;
 use headless_chrome::Tab;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::sync::atomic::AtomicBool;
-use super::daily::{add_log, check_cancel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum JudgeOutcome {
@@ -42,7 +42,10 @@ where
                 if i >= attempts {
                     return Err(e);
                 }
-                add_log(logs, &format!("{}失败，准备重试 ({}/{}): {}", label, i, attempts, e));
+                add_log(
+                    logs,
+                    &format!("{}失败，准备重试 ({}/{}): {}", label, i, attempts, e),
+                );
                 std::thread::sleep(Duration::from_millis(600 * i as u64));
             }
         }
@@ -324,7 +327,9 @@ fn try_set_code(tab: &Arc<Tab>, code: &str) -> Result<(bool, String)> {
     let json_str = eval
         .value
         .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| r#"{"ok":false,"method":"none","len":0,"expectedLen":0,"hasMarker":false}"#.to_string());
+        .unwrap_or_else(|| {
+            r#"{"ok":false,"method":"none","len":0,"expectedLen":0,"hasMarker":false}"#.to_string()
+        });
 
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
     let ok = parsed["ok"].as_bool().unwrap_or(false);
@@ -394,7 +399,10 @@ pub fn submit_code(
 
     retry(logs, cancel_flag, "切换语言", 3, |attempt| {
         check_cancel(cancel_flag)?;
-        add_log(logs, &format!("正在右侧编辑器切换语言为 {}... (第 {} 次)", lang, attempt));
+        add_log(
+            logs,
+            &format!("正在右侧编辑器切换语言为 {}... (第 {} 次)", lang, attempt),
+        );
         let ok = try_switch_language(tab, lang)?;
         if ok {
             Ok(())
@@ -446,7 +454,8 @@ pub fn submit_code(
             Ok(())
         }
         other => {
-            let (_, snippet) = read_judge_outcome(tab).unwrap_or((JudgeOutcome::Unknown, String::new()));
+            let (_, snippet) =
+                read_judge_outcome(tab).unwrap_or((JudgeOutcome::Unknown, String::new()));
             Err(anyhow::anyhow!("判题未通过: {:?}\n{}", other, snippet))
         }
     }

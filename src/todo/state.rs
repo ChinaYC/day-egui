@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::model::{TodoItem, TodoSection, TodoSettings, TodoStorage};
+use super::model::{TodoFolder, TodoItem, TodoPlanner, TodoSection, TodoSettings, TodoStorage};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write as _};
 use std::time::{Duration, Instant};
@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TodoViewMode {
     Tasks,
+    Planner,
     Trash,
 }
 
@@ -64,11 +65,14 @@ pub enum UndoAction {
 pub struct TodoState {
     pub items: Vec<TodoItem>,
     pub sections: Vec<TodoSection>,
+    pub folders: Vec<TodoFolder>,
     pub settings: TodoSettings,
+    pub planner: TodoPlanner,
     pub new_task_title: String,
     pub new_task_description: String,
     pub new_task_due: String,
     pub new_task_reminder: String,
+    pub new_task_tags: String,
 
     pub save_folder: Option<String>,
 
@@ -87,6 +91,10 @@ pub struct TodoState {
 
     #[serde(skip)]
     pub active_section: Option<Uuid>,
+    #[serde(skip)]
+    pub active_folder: Option<Uuid>,
+    #[serde(skip)]
+    pub active_tag: Option<String>,
     #[serde(skip)]
     pub new_section_name: String,
     #[serde(skip)]
@@ -108,6 +116,8 @@ pub struct TodoState {
     #[serde(skip)]
     pub edit_desc_input: String,
     #[serde(skip)]
+    pub edit_tags_input: String,
+    #[serde(skip)]
     pub edit_section_input: Option<Uuid>,
     #[serde(skip)]
     pub edit_due_input: String,
@@ -117,6 +127,13 @@ pub struct TodoState {
     pub edit_priority_input: u8,
     #[serde(skip)]
     pub edit_error_msg: Option<String>,
+
+    #[serde(skip)]
+    pub selection_mode: bool,
+    #[serde(skip)]
+    pub selected_items: std::collections::BTreeSet<Uuid>,
+    #[serde(skip)]
+    pub batch_tag_input: String,
 
     #[serde(skip)]
     pub view_mode: TodoViewMode,
@@ -156,6 +173,17 @@ pub struct TodoState {
     pub section_manage_error_msg: Option<String>,
 
     #[serde(skip)]
+    pub new_folder_name: String,
+    #[serde(skip)]
+    pub folder_to_rename: Option<Uuid>,
+    #[serde(skip)]
+    pub folder_rename_input: String,
+    #[serde(skip)]
+    pub folder_to_delete: Option<Uuid>,
+    #[serde(skip)]
+    pub folder_manage_error_msg: Option<String>,
+
+    #[serde(skip)]
     pub last_font_scale: f32,
 
     #[serde(skip)]
@@ -169,11 +197,14 @@ impl Default for TodoState {
         let mut state = Self {
             items: Vec::new(),
             sections: Vec::new(),
+            folders: Vec::new(),
             settings: TodoSettings::default(),
+            planner: TodoPlanner::default(),
             new_task_title: String::new(),
             new_task_description: String::new(),
             new_task_due: String::new(),
             new_task_reminder: String::new(),
+            new_task_tags: String::new(),
             save_folder: None,
             item_to_delete: None,
             delete_is_permanent: false,
@@ -182,6 +213,8 @@ impl Default for TodoState {
             dragging_section: None,
             drag_target_index: None,
             active_section: None,
+            active_folder: None,
+            active_tag: None,
             new_section_name: String::new(),
             new_task_section: None,
             show_settings: false,
@@ -191,6 +224,7 @@ impl Default for TodoState {
             editing_task: None,
             edit_title_input: String::new(),
             edit_desc_input: String::new(),
+            edit_tags_input: String::new(),
             edit_section_input: None,
             edit_due_input: String::new(),
             edit_reminder_input: String::new(),
@@ -212,9 +246,17 @@ impl Default for TodoState {
             section_to_delete: None,
             section_delete_move_to: None,
             section_manage_error_msg: None,
+            new_folder_name: String::new(),
+            folder_to_rename: None,
+            folder_rename_input: String::new(),
+            folder_to_delete: None,
+            folder_manage_error_msg: None,
             last_font_scale: 1.0,
             initial_loaded: false,
             error_msg: None,
+            selection_mode: false,
+            selected_items: std::collections::BTreeSet::new(),
+            batch_tag_input: String::new(),
         };
         state.ensure_builtin_sections_and_settings();
         state
@@ -236,7 +278,8 @@ impl TodoState {
     pub fn push_undo_replace_item(&mut self, id: Uuid, before: TodoItem) {
         self.undo_stack.push(UndoAction::ReplaceItem { id, before });
         if self.undo_stack.len() > 50 {
-            self.undo_stack.drain(0..self.undo_stack.len().saturating_sub(50));
+            self.undo_stack
+                .drain(0..self.undo_stack.len().saturating_sub(50));
         }
     }
 
@@ -292,11 +335,85 @@ impl TodoState {
         }
     }
 
+    pub fn switch_storage_folder(&mut self, folder: Option<String>) {
+        self.save_folder = folder;
+        self.reset_runtime_state_for_storage_switch();
+        self.load_from_file();
+    }
+
+    fn reset_runtime_state_for_storage_switch(&mut self) {
+        self.item_to_delete = None;
+        self.delete_is_permanent = false;
+        self.confirm_clear_trash = false;
+        self.dragging_item = None;
+        self.dragging_section = None;
+        self.drag_target_index = None;
+
+        self.active_section = None;
+        self.active_folder = None;
+        self.active_tag = None;
+        self.new_section_name.clear();
+        self.new_task_section = None;
+        self.show_settings = false;
+
+        self.editing_reminder = None;
+        self.reminder_input.clear();
+        self.reminder_error_msg = None;
+
+        self.editing_task = None;
+        self.edit_title_input.clear();
+        self.edit_desc_input.clear();
+        self.edit_tags_input.clear();
+        self.edit_section_input = None;
+        self.edit_due_input.clear();
+        self.edit_reminder_input.clear();
+        self.edit_priority_input = 2;
+        self.edit_error_msg = None;
+
+        self.selection_mode = false;
+        self.selected_items.clear();
+        self.batch_tag_input.clear();
+
+        self.view_mode = TodoViewMode::Tasks;
+        self.smart_view = TaskSmartView::All;
+        self.search_query.clear();
+        self.filter_status = FilterStatus::All;
+        self.filter_automated = FilterAutomated::All;
+        self.filter_reminder = FilterReminder::All;
+        self.sort_mode = SortMode::Manual;
+
+        self.undo_stack.clear();
+        self.new_task_error_msg = None;
+        self.error_msg = None;
+
+        self.new_task_title.clear();
+        self.new_task_description.clear();
+        self.new_task_due.clear();
+        self.new_task_reminder.clear();
+        self.new_task_tags.clear();
+        self.new_task_priority = 2;
+    }
+
+    fn reset_persistent_state_for_storage_switch(&mut self) {
+        self.items.clear();
+        self.sections.clear();
+        self.folders.clear();
+        self.settings = TodoSettings::default();
+        self.planner = TodoPlanner::default();
+    }
+
     pub fn section_name(&self, section_id: Uuid) -> Option<&str> {
         self.sections
             .iter()
             .find(|s| s.id == section_id)
             .map(|s| s.name.as_str())
+    }
+
+    pub fn folder_name(&self, folder_id: Uuid) -> Option<&str> {
+        self.folders
+            .iter()
+            .find(|f| f.id == folder_id)
+            .map(|f| f.name.as_str())
     }
 
     pub fn get_or_create_section_id_by_name(&mut self, name: &str) -> Uuid {
@@ -322,7 +439,11 @@ impl TodoState {
 
         for item in &mut self.items {
             if item.section_id.is_none() {
-                item.section_id = Some(if item.is_automated { auto_id } else { manual_id });
+                item.section_id = Some(if item.is_automated {
+                    auto_id
+                } else {
+                    manual_id
+                });
             }
         }
     }
@@ -352,18 +473,20 @@ impl TodoState {
     pub fn load_from_file(&mut self) {
         if let Some(path) = self.get_save_path() {
             if path.exists() {
-                let storage_res = File::open(&path)
-                    .ok()
-                    .and_then(|f| serde_json::from_reader::<_, TodoStorage>(BufReader::new(f)).ok());
+                let storage_res = File::open(&path).ok().and_then(|f| {
+                    serde_json::from_reader::<_, TodoStorage>(BufReader::new(f)).ok()
+                });
 
                 if let Some(storage) = storage_res {
                     self.items = storage.items;
                     self.sections = storage.sections;
+                    self.folders = storage.folders;
                     self.settings = storage.settings;
+                    self.planner = storage.planner;
                 } else {
-                    let items_res = File::open(&path)
-                        .ok()
-                        .and_then(|f| serde_json::from_reader::<_, Vec<TodoItem>>(BufReader::new(f)).ok());
+                    let items_res = File::open(&path).ok().and_then(|f| {
+                        serde_json::from_reader::<_, Vec<TodoItem>>(BufReader::new(f)).ok()
+                    });
 
                     if let Some(items) = items_res {
                         self.items = items;
@@ -373,6 +496,8 @@ impl TodoState {
                         );
                     }
                 }
+            } else if self.save_folder.is_some() {
+                self.reset_persistent_state_for_storage_switch();
             }
         }
         self.ensure_builtin_sections_and_settings();
@@ -390,7 +515,9 @@ impl TodoState {
                 schema_version: 1,
                 items: self.items.clone(),
                 sections: self.sections.clone(),
+                folders: self.folders.clone(),
                 settings: self.settings.clone(),
+                planner: self.planner.clone(),
             };
 
             let Some(folder) = path.parent() else {
@@ -462,7 +589,9 @@ impl TodoState {
             }
 
             let section_id = item.section_id.unwrap_or(manual_id);
-            let section = self.section_name(section_id).unwrap_or("未知分区 (Unknown)");
+            let section = self
+                .section_name(section_id)
+                .unwrap_or("未知分区 (Unknown)");
             let export = ExportItem {
                 id: item.id,
                 title: item.title.as_str(),
@@ -507,7 +636,9 @@ impl TodoState {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         self.items
             .iter()
-            .filter(|item| item.is_automated && item.completed && item.created_at.starts_with(&today))
+            .filter(|item| {
+                item.is_automated && item.completed && item.created_at.starts_with(&today)
+            })
             .count()
     }
 

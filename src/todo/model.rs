@@ -2,6 +2,18 @@ use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum ReminderRepeat {
+    Weekly { weekday: u8, hour: u8, minute: u8 },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeMode {
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TodoItem {
     pub id: Uuid,
@@ -20,6 +32,8 @@ pub struct TodoItem {
     pub reminder_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub reminder_sent: bool,
+    #[serde(default)]
+    pub reminder_repeat: Option<ReminderRepeat>,
 
     #[serde(default)]
     pub due_at: Option<DateTime<Utc>>,
@@ -38,6 +52,9 @@ pub struct TodoItem {
     pub automated_source: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl TodoItem {
@@ -50,12 +67,14 @@ impl TodoItem {
             section_id,
             reminder_at: None,
             reminder_sent: false,
+            reminder_repeat: None,
             due_at: None,
             priority: default_priority(),
             deleted_at: None,
             is_automated: false,
             automated_source: None,
             description,
+            tags: Vec::new(),
         }
     }
 
@@ -73,21 +92,52 @@ impl TodoItem {
             section_id,
             reminder_at: None,
             reminder_sent: false,
+            reminder_repeat: None,
             due_at: None,
             priority: 3,
             deleted_at: None,
             is_automated: true,
             automated_source: Some(source),
             description,
+            tags: Vec::new(),
         }
     }
 
     pub fn reminder_at_local_string(&self) -> Option<String> {
-        self.reminder_at.map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string())
+        self.reminder_at.map(|utc| {
+            utc.with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M")
+                .to_string()
+        })
+    }
+
+    pub fn reminder_display_string(&self) -> Option<String> {
+        if let Some(rule) = self.reminder_repeat {
+            match rule {
+                ReminderRepeat::Weekly {
+                    weekday,
+                    hour,
+                    minute,
+                } => {
+                    let day = match weekday {
+                        0 => "周一",
+                        1 => "周二",
+                        2 => "周三",
+                        3 => "周四",
+                        4 => "周五",
+                        5 => "周六",
+                        _ => "周日",
+                    };
+                    return Some(format!("每{day} {:02}:{:02}", hour, minute));
+                }
+            }
+        }
+        self.reminder_at_local_string()
     }
 
     pub fn due_at_local_string(&self) -> Option<String> {
-        self.due_at.map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d").to_string())
+        self.due_at
+            .map(|utc| utc.with_timezone(&Local).format("%Y-%m-%d").to_string())
     }
 
     pub fn priority_label(&self) -> &'static str {
@@ -108,9 +158,28 @@ fn default_priority() -> u8 {
 pub struct TodoSection {
     pub id: Uuid,
     pub name: String,
+
+    #[serde(default)]
+    pub folder_id: Option<Uuid>,
 }
 
 impl TodoSection {
+    pub fn new(name: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            folder_id: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TodoFolder {
+    pub id: Uuid,
+    pub name: String,
+}
+
+impl TodoFolder {
     pub fn new(name: String) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -127,6 +196,8 @@ pub struct TodoSettings {
     // 字体大小倍率（1.0 = 默认），用于提升可读性。
     #[serde(default = "default_font_scale")]
     pub font_scale: f32,
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: ThemeMode,
 }
 
 impl Default for TodoSettings {
@@ -134,12 +205,17 @@ impl Default for TodoSettings {
         Self {
             automated_section_id: None,
             font_scale: default_font_scale(),
+            theme_mode: default_theme_mode(),
         }
     }
 }
 
 fn default_font_scale() -> f32 {
     1.0
+}
+
+fn default_theme_mode() -> ThemeMode {
+    ThemeMode::System
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -149,9 +225,68 @@ pub struct TodoStorage {
     pub schema_version: u32,
     pub items: Vec<TodoItem>,
     pub sections: Vec<TodoSection>,
+    #[serde(default)]
+    pub folders: Vec<TodoFolder>,
     pub settings: TodoSettings,
+    pub planner: TodoPlanner,
 }
 
 fn default_schema_version() -> u32 {
     1
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct PlannerEntry {
+    pub text: String,
+    pub done: bool,
+}
+
+impl Default for PlannerEntry {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            done: false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct TodoPlanner {
+    pub date: String,
+    pub long_term: Vec<PlannerEntry>,
+    pub weekly: Vec<PlannerEntry>,
+    pub daily: Vec<Vec<PlannerEntry>>,
+    pub reward: String,
+    pub notes: String,
+}
+
+impl Default for TodoPlanner {
+    fn default() -> Self {
+        let mut daily: Vec<Vec<PlannerEntry>> = Vec::new();
+        for _ in 0..7 {
+            daily.push(vec![
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+            ]);
+        }
+        Self {
+            date: String::new(),
+            long_term: vec![
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+            ],
+            weekly: vec![
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+                PlannerEntry::default(),
+            ],
+            daily,
+            reward: String::new(),
+            notes: String::new(),
+        }
+    }
 }

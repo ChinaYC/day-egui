@@ -1,6 +1,7 @@
 #![warn(clippy::all, rust_2018_idioms)]
 
 mod app;
+pub mod fitness;
 pub mod leetcode;
 pub mod theme;
 pub mod todo;

@@ -1,10 +1,12 @@
+use crate::fitness::FitnessState;
 use crate::leetcode::LeetCodeState;
-use crate::todo::TodoState;
+use crate::todo::{ThemeMode, TodoState};
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy)]
 pub enum AppRoute {
     LeetCode,
     Todo,
+    Fitness,
 }
 
 impl Default for AppRoute {
@@ -20,6 +22,9 @@ pub struct TemplateApp {
     route: AppRoute,
     leetcode_state: LeetCodeState,
     todo_state: TodoState,
+    fitness_state: FitnessState,
+    #[serde(skip)]
+    system_visuals: Option<egui::Visuals>,
 }
 
 impl Default for TemplateApp {
@@ -28,6 +33,8 @@ impl Default for TemplateApp {
             route: AppRoute::default(),
             leetcode_state: LeetCodeState::default(),
             todo_state: TodoState::default(),
+            fitness_state: FitnessState::default(),
+            system_visuals: None,
         }
     }
 }
@@ -42,11 +49,13 @@ impl TemplateApp {
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
+        let mut app: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
-        }
+        };
+        app.system_visuals = Some(cc.egui_ctx.global_style().visuals.clone());
+        app
     }
 }
 
@@ -63,21 +72,35 @@ impl eframe::App for TemplateApp {
             self.todo_state.load_from_file();
         }
 
+        let visuals = match self.todo_state.settings.theme_mode {
+            ThemeMode::System => self.system_visuals.clone(),
+            ThemeMode::Light => Some(egui::Visuals::light()),
+            ThemeMode::Dark => Some(egui::Visuals::dark()),
+        };
+        if let Some(visuals) = visuals {
+            ui.ctx().set_visuals(visuals);
+        }
+
         // 提醒轮询：让应用在空闲时也能“到点触发通知”。
         // eframe/egui 在没有交互时可能降低刷新频率，这里主动请求定时重绘用于检查提醒。
-        ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs(1));
         self.todo_state.poll_reminders_and_persist_if_needed();
 
         // Sync background tasks and update Todo list
-        if let Some((task_title, source, description)) = self.leetcode_state.sync_background_state() {
+        if let Some((task_title, source, description)) = self.leetcode_state.sync_background_state()
+        {
             use crate::todo::TodoItem;
-            
+
             if !self.todo_state.has_today_automated_task(&source) {
                 // 自动任务落到哪个分区由 Todo 设置控制；默认是“自动 (Auto)”分区。
                 let section_id = Some(self.todo_state.automated_target_section_id());
-                self.todo_state
-                    .items
-                    .push(TodoItem::new_automated(task_title, source, description, section_id));
+                self.todo_state.items.push(TodoItem::new_automated(
+                    task_title,
+                    source,
+                    description,
+                    section_id,
+                ));
                 self.todo_state.save_to_file();
             }
         }
@@ -112,7 +135,6 @@ impl eframe::App for TemplateApp {
                 ui.ctx().clone().inspection_ui(ui);
             });
 
-
         egui::Panel::left("left_panel")
             .resizable(false)
             .exact_size(200.0)
@@ -121,12 +143,25 @@ impl eframe::App for TemplateApp {
                 ui.add_space(20.0);
 
                 ui.vertical_centered_justified(|ui| {
-                    if ui.selectable_label(self.route == AppRoute::LeetCode, "LeetCode 刷题").clicked() {
+                    if ui
+                        .selectable_label(self.route == AppRoute::LeetCode, "LeetCode 刷题")
+                        .clicked()
+                    {
                         self.route = AppRoute::LeetCode;
                     }
                     ui.add_space(8.0);
-                    if ui.selectable_label(self.route == AppRoute::Todo, "Todo 清单").clicked() {
+                    if ui
+                        .selectable_label(self.route == AppRoute::Todo, "Todo 清单")
+                        .clicked()
+                    {
                         self.route = AppRoute::Todo;
+                    }
+                    ui.add_space(8.0);
+                    if ui
+                        .selectable_label(self.route == AppRoute::Fitness, "健身训练")
+                        .clicked()
+                    {
+                        self.route = AppRoute::Fitness;
                     }
                 });
 
@@ -138,14 +173,21 @@ impl eframe::App for TemplateApp {
                 });
             });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            match self.route {
-                AppRoute::LeetCode => {
-                    self.leetcode_state.ui(ui, &self.todo_state);
-                }
-                AppRoute::Todo => {
-                    self.todo_state.ui(ui);
-                }
+        egui::CentralPanel::default().show_inside(ui, |ui| match self.route {
+            AppRoute::LeetCode => {
+                self.leetcode_state.ui(ui, &self.todo_state);
+            }
+            AppRoute::Todo => {
+                self.todo_state.ui(ui);
+            }
+            AppRoute::Fitness => {
+                let mut changed = false;
+                crate::fitness::ui::show(
+                    &mut self.fitness_state,
+                    ui,
+                    &mut self.todo_state,
+                    &mut changed,
+                );
             }
         });
     }

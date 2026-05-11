@@ -11,4 +11,3 @@ pub fn send_system_notification(_title: &str, _body: &str) {}
 
 #[cfg(target_arch = "wasm32")]
 pub fn send_system_notification(_title: &str, _body: &str) {}
-
