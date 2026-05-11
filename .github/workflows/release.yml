@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types:
+      - published
   workflow_dispatch:
     inputs:
       version:
@@ -192,16 +195,23 @@ EOF
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          merge-multiple: true
 
       - name: Resolve tag
         id: tag
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: List artifacts
+        shell: bash
+        run: ls -la dist || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -209,4 +219,5 @@ EOF
           tag_name: ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          files: dist/**/*
+          fail_on_unmatched_files: true
+          files: dist/*
