@@ -26,7 +26,7 @@ git push origin v0.1.0
 4. 在 `version` 输入框填入要发布的 tag（例如 `v0.1.0`），然后运行
 
 工作流结束后会自动创建对应 tag 的 Release，并上传三端产物：
-- `EfficiencyTool-linux-x86_64-musl.tar.gz`（Linux 静态版，更通用）
+- `EfficiencyTool-linux-x86_64-gnu.tar.gz`
 - `EfficiencyTool-windows-x86_64.zip`
 - `EfficiencyTool-macos-aarch64.tar.gz`（内含 `EfficiencyTool.app`）
 - `EfficiencyTool-macos-x86_64.tar.gz`（内含 `EfficiencyTool.app`）

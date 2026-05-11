@@ -17,6 +17,8 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      - name: Install Linux deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libfreetype6-dev
       - uses: actions-rs/cargo@v1
         with:
           command: check
@@ -48,7 +50,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - run: sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libfreetype6-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
       - uses: actions-rs/cargo@v1
         with:
           command: test
@@ -81,6 +83,8 @@ jobs:
           toolchain: stable
           override: true
           components: clippy
+      - name: Install Linux deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libfreetype6-dev
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -108,38 +112,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: ubuntu-latest
+            TARGET: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            TARGET: x86_64-pc-windows-msvc
           - os: macos-latest
             TARGET: aarch64-apple-darwin
-
           - os: macos-latest
             TARGET: x86_64-apple-darwin
 
-          - os: ubuntu-latest
-            TARGET: arm-unknown-linux-musleabihf
-
-          - os: ubuntu-latest
-            TARGET: armv7-unknown-linux-musleabihf
-
-          - os: ubuntu-latest
-            TARGET: x86_64-unknown-linux-musl
-
-          - os: windows-latest
-            TARGET: x86_64-pc-windows-msvc
-            EXTENSION: .exe
-
     steps:
-      - name: Building ${{ matrix.TARGET }}
-        run: echo "${{ matrix.TARGET }}"
-
-      - uses: actions/checkout@master
-      - uses: actions-rs/toolchain@v1.0.1
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
         with:
+          profile: minimal
           toolchain: stable
           target: ${{ matrix.TARGET }}
           override: true
-
+      - name: Install Linux deps
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libfreetype6-dev
       - uses: actions-rs/cargo@v1
         with:
-          use-cross: true
           command: build
-          args: --verbose --release --target=${{ matrix.TARGET }}
+          args: --release --target=${{ matrix.TARGET }}
