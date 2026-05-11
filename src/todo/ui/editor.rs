@@ -173,6 +173,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                             None
                         };
                         item.tags = tags;
+                        item.touch();
                         state.push_undo_replace_item(item_id, before);
                         *state_changed = true;
                     }

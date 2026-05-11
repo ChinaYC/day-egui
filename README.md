@@ -32,6 +32,7 @@ cargo run --release
 
 - 本地打包脚本：`build_mac_app.sh`、`build_apk.sh`
 - GitHub Releases 自动构建与触发方式见 [docs/release.md](file:///workspace/docs/release.md)
+- 版本更新说明见 [CHANGELOG.md](file:///workspace/CHANGELOG.md)
 
 ## 📦 How to Build macOS App / 如何打包 macOS 应用
 
