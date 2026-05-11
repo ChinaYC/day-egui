@@ -25,7 +25,12 @@ git push origin v0.1.0
 - `EfficiencyTool-windows-x86_64.zip`
 - `EfficiencyTool-macos-aarch64.tar.gz`（内含 `EfficiencyTool.app`）
 - `EfficiencyTool-macos-x86_64.tar.gz`（内含 `EfficiencyTool.app`）
+- `EfficiencyTool-android-arm64.apk`
 - `EfficiencyTool-web.tar.gz`（Web 版静态文件，可本地解压打开）
+
+下载地址：
+- Release 页面：`https://github.com/<owner>/<repo>/releases/tag/<tag>`
+- 产物直链：`https://github.com/<owner>/<repo>/releases/download/<tag>/<asset-file-name>`
 
 ## 常见问题
 

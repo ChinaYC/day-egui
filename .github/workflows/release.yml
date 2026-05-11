@@ -141,8 +141,52 @@ EOF
           name: web
           path: EfficiencyTool-web.tar.gz
 
+  build_android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Android SDK/NDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264"
+          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/26.3.11579264" >> "$GITHUB_ENV"
+
+      - name: Install cargo-apk
+        shell: bash
+        run: cargo install cargo-apk --locked
+
+      - name: Build APK (arm64)
+        shell: bash
+        env:
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+        run: |
+          cargo apk build --release --target aarch64-linux-android
+          APK_PATH="$(ls -1 target/aarch64-linux-android/release/apk/*.apk | head -n 1)"
+          mkdir -p dist
+          cp "$APK_PATH" "dist/EfficiencyTool-android-arm64.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64
+          path: dist/EfficiencyTool-android-arm64.apk
+
   release:
-    needs: [build_desktop, build_web]
+    needs: [build_desktop, build_web, build_android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
