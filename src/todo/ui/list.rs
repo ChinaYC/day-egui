@@ -175,6 +175,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                     } else if item.reminder_at.is_some() {
                                         item.reminder_sent = false;
                                     }
+                                    item.touch();
                                     undo_replacements.push((item_id, before));
                                     *state_changed = true;
                                 } else {
@@ -291,6 +292,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                             if moved_section != item.section_id {
                                                 let before = item.clone();
                                                 item.section_id = moved_section;
+                                                item.touch();
                                                 undo_replacements.push((item_id, before));
                                                 *state_changed = true;
                                             }

@@ -67,6 +67,7 @@ impl TodoState {
                         let before = item.clone();
                         item.deleted_at = Some(chrono::Utc::now());
                         item.reminder_sent = true;
+                        item.touch();
                         self.push_undo_replace_item(item_id, before);
                         self.show_snackbar("已删除");
                         self.selected_items.remove(&item_id);
@@ -93,6 +94,7 @@ impl TodoState {
                                 item.reminder_sent = false;
                             }
                         }
+                        item.touch();
                         self.push_undo_replace_item(item_id, before);
                         self.selected_items.remove(&item_id);
                         state_changed = true;

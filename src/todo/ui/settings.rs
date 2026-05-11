@@ -10,6 +10,8 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             }
         });
 
+    show_import_conflict_window(state, ui, state_changed);
+
     if !state.show_settings {
         return;
     }
@@ -232,6 +234,35 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 ui.add_space(4.0);
             }
 
+            if let Some(t) = state.settings.last_sync_time {
+                let local = t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string();
+                ui.label(format!("上次导入时间：{local}"));
+            } else {
+                ui.label("上次导入时间：无");
+            }
+
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut state.import_manual_conflicts, "导入时手动解决冲突");
+
+                if ui.button("导入任务 (Import)").clicked() {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Todo", &["json", "jsonl"])
+                            .pick_file()
+                        {
+                            if state.start_import_from_file(path) {
+                                *state_changed = true;
+                            }
+                        }
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        state.show_snackbar("Web 版本暂不支持导入");
+                    }
+                }
+            });
+
             ui.horizontal(|ui| {
                 if ui.button("导出任务 JSONL").clicked() {
                     if let Some(path) = state.export_jsonl(false) {
@@ -372,6 +403,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         for item in &mut state.items {
                             if item.section_id == Some(section_id) {
                                 item.section_id = Some(move_to);
+                                item.touch();
                             }
                         }
                         state.sections.retain(|s| s.id != section_id);
@@ -494,6 +526,106 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         if !delete_open {
             state.folder_to_delete = None;
             state.folder_manage_error_msg = None;
+        }
+    }
+}
+
+fn show_import_conflict_window(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) {
+    if state.pending_import.is_none() {
+        return;
+    };
+
+    let mut open = true;
+    let mut choose_latest = false;
+    let mut cancel = false;
+    let mut apply = false;
+    egui::Window::new("冲突解决 (Resolve conflicts)")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(true)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ui.ctx(), |ui| {
+            let count = state
+                .pending_import
+                .as_ref()
+                .map(|p| p.conflicts.len())
+                .unwrap_or(0);
+            ui.label(format!("冲突条目：{}", count));
+            ui.add_space(8.0);
+
+            egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                if let Some(pending) = state.pending_import.as_mut() {
+                    for c in &mut pending.conflicts {
+                        ui.separator();
+                        let local_time = c
+                            .local
+                            .updated_at_utc()
+                            .with_timezone(&chrono::Local)
+                            .format("%Y-%m-%d %H:%M")
+                            .to_string();
+                        let incoming_time = c
+                            .incoming
+                            .updated_at_utc()
+                            .with_timezone(&chrono::Local)
+                            .format("%Y-%m-%d %H:%M")
+                            .to_string();
+
+                        ui.label(format!("任务 ID: {}", c.id));
+                        ui.label(format!("本地：{}  (更新 {local_time})", c.local.title));
+                        ui.label(format!("导入：{}  (更新 {incoming_time})", c.incoming.title));
+
+                        ui.horizontal(|ui| {
+                            ui.radio_value(
+                                &mut c.choice,
+                                crate::todo::state::ImportConflictChoice::UseLocal,
+                                "用本地",
+                            );
+                            ui.radio_value(
+                                &mut c.choice,
+                                crate::todo::state::ImportConflictChoice::UseIncoming,
+                                "用导入",
+                            );
+                            ui.radio_value(
+                                &mut c.choice,
+                                crate::todo::state::ImportConflictChoice::DuplicateIncoming,
+                                "保留两份",
+                            );
+                        });
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button("全部用较新").clicked() {
+                    choose_latest = true;
+                }
+                if ui.button("取消导入").clicked() {
+                    cancel = true;
+                }
+                if ui.button("应用导入").clicked() {
+                    apply = true;
+                }
+            });
+        });
+
+    if !open {
+        state.pending_import = None;
+        return;
+    }
+
+    if cancel {
+        state.pending_import = None;
+        return;
+    }
+
+    if choose_latest {
+        state.choose_latest_for_all_conflicts();
+    }
+
+    if apply {
+        if state.apply_pending_import() {
+            *state_changed = true;
         }
     }
 }

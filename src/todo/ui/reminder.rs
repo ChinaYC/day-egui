@@ -36,6 +36,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         item.reminder_at = None;
                         item.reminder_sent = false;
                         item.reminder_repeat = None;
+                        item.touch();
                         *state_changed = true;
                     }
                     state.editing_reminder = None;
@@ -71,6 +72,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                         item.reminder_at = Some(parsed);
                         item.reminder_sent = false;
                         item.reminder_repeat = repeat;
+                        item.touch();
                         *state_changed = true;
                     }
                     state.editing_reminder = None;

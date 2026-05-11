@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -20,6 +20,9 @@ pub struct TodoItem {
     pub title: String,
     pub completed: bool,
     pub created_at: String,
+
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
 
     // 分区：任务属于哪个分区（分区本身在 TodoState.sections 里定义）
     // 用 Option 兼容旧版本数据：旧文件里没有这个字段时会走默认值 None，再在加载后做迁移补全。
@@ -64,6 +67,7 @@ impl TodoItem {
             title,
             completed: false,
             created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            updated_at: Some(Utc::now()),
             section_id,
             reminder_at: None,
             reminder_sent: false,
@@ -89,6 +93,7 @@ impl TodoItem {
             title,
             completed: true,
             created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            updated_at: Some(Utc::now()),
             section_id,
             reminder_at: None,
             reminder_sent: false,
@@ -101,6 +106,33 @@ impl TodoItem {
             description,
             tags: Vec::new(),
         }
+    }
+
+    pub fn touch(&mut self) {
+        self.updated_at = Some(Utc::now());
+    }
+
+    pub fn updated_at_utc(&self) -> DateTime<Utc> {
+        self.updated_at.unwrap_or_else(Utc::now)
+    }
+
+    pub fn ensure_updated_at(&mut self) {
+        if self.updated_at.is_some() {
+            return;
+        }
+
+        let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&self.created_at, "%Y-%m-%d %H:%M:%S")
+        else {
+            self.updated_at = Some(Utc::now());
+            return;
+        };
+
+        let Some(local_dt) = chrono::Local.from_local_datetime(&naive).single() else {
+            self.updated_at = Some(Utc::now());
+            return;
+        };
+
+        self.updated_at = Some(local_dt.with_timezone(&Utc));
     }
 
     pub fn reminder_at_local_string(&self) -> Option<String> {
@@ -198,6 +230,10 @@ pub struct TodoSettings {
     pub font_scale: f32,
     #[serde(default = "default_theme_mode")]
     pub theme_mode: ThemeMode,
+    #[serde(default)]
+    pub last_sync_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub last_sync_hash: Option<String>,
 }
 
 impl Default for TodoSettings {
@@ -206,6 +242,8 @@ impl Default for TodoSettings {
             automated_section_id: None,
             font_scale: default_font_scale(),
             theme_mode: default_theme_mode(),
+            last_sync_time: None,
+            last_sync_hash: None,
         }
     }
 }

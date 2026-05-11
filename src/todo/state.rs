@@ -60,6 +60,29 @@ pub enum UndoAction {
     ReinsertMany { items: Vec<(usize, TodoItem)> },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ImportConflictChoice {
+    UseLocal,
+    UseIncoming,
+    DuplicateIncoming,
+}
+
+pub struct ImportConflict {
+    pub id: Uuid,
+    pub local: TodoItem,
+    pub incoming: TodoItem,
+    pub choice: ImportConflictChoice,
+}
+
+pub struct PendingImport {
+    pub incoming_hash: String,
+    pub baseline_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub items: Vec<TodoItem>,
+    pub sections: Vec<TodoSection>,
+    pub folders: Vec<TodoFolder>,
+    pub conflicts: Vec<ImportConflict>,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct TodoState {
@@ -190,6 +213,13 @@ pub struct TodoState {
     pub initial_loaded: bool,
     #[serde(skip)]
     pub error_msg: Option<String>,
+
+    #[serde(skip)]
+    pub import_manual_conflicts: bool,
+    #[serde(skip)]
+    pub pending_import: Option<PendingImport>,
+    #[serde(skip)]
+    pub import_error_msg: Option<String>,
 }
 
 impl Default for TodoState {
@@ -257,6 +287,9 @@ impl Default for TodoState {
             selection_mode: false,
             selected_items: std::collections::BTreeSet::new(),
             batch_tag_input: String::new(),
+            import_manual_conflicts: false,
+            pending_import: None,
+            import_error_msg: None,
         };
         state.ensure_builtin_sections_and_settings();
         state
@@ -392,6 +425,9 @@ impl TodoState {
         self.new_task_reminder.clear();
         self.new_task_tags.clear();
         self.new_task_priority = 2;
+
+        self.pending_import = None;
+        self.import_error_msg = None;
     }
 
     fn reset_persistent_state_for_storage_switch(&mut self) {
@@ -445,6 +481,30 @@ impl TodoState {
                     manual_id
                 });
             }
+        }
+    }
+
+    pub fn migrate_items_without_updated_at(&mut self) {
+        for item in &mut self.items {
+            item.ensure_updated_at();
+        }
+    }
+
+    pub fn migrate_items_with_invalid_section(&mut self) {
+        let auto_id = self.get_or_create_section_id_by_name("自动 (Auto)");
+        let manual_id = self.get_or_create_section_id_by_name("手动 (Manual)");
+
+        let existing: std::collections::HashSet<Uuid> =
+            self.sections.iter().map(|s| s.id).collect();
+
+        for item in &mut self.items {
+            let Some(section_id) = item.section_id else {
+                continue;
+            };
+            if existing.contains(&section_id) {
+                continue;
+            }
+            item.section_id = Some(if item.is_automated { auto_id } else { manual_id });
         }
     }
 
@@ -502,6 +562,8 @@ impl TodoState {
         }
         self.ensure_builtin_sections_and_settings();
         self.migrate_items_without_section();
+        self.migrate_items_without_updated_at();
+        self.migrate_items_with_invalid_section();
         self.initial_loaded = true;
     }
 
@@ -626,6 +688,175 @@ impl TodoState {
         Some(path)
     }
 
+    pub fn start_import_from_file(&mut self, path: std::path::PathBuf) -> bool {
+        let Ok(bytes) = std::fs::read(&path) else {
+            self.show_snackbar("导入失败：无法读取文件");
+            return false;
+        };
+
+        let incoming_hash = hash_bytes(&bytes);
+        if self.settings.last_sync_hash.as_deref() == Some(incoming_hash.as_str()) {
+            self.show_snackbar("该文件已导入过");
+            return false;
+        }
+
+        let Ok(parsed) = parse_import_bytes(&bytes) else {
+            self.show_snackbar("导入失败：无法解析文件");
+            return false;
+        };
+
+        let mut items = parsed.items;
+        for item in &mut items {
+            item.ensure_updated_at();
+        }
+
+        let baseline_time = self.settings.last_sync_time;
+        let mut conflicts: Vec<ImportConflict> = Vec::new();
+
+        let mut local_index: std::collections::HashMap<Uuid, usize> =
+            std::collections::HashMap::new();
+        for (idx, item) in self.items.iter().enumerate() {
+            local_index.insert(item.id, idx);
+        }
+
+        for incoming in &items {
+            let Some(&idx) = local_index.get(&incoming.id) else {
+                continue;
+            };
+            let local = &self.items[idx];
+            let Some(baseline) = baseline_time else {
+                continue;
+            };
+            if local.updated_at_utc() > baseline && incoming.updated_at_utc() > baseline {
+                let choice = if incoming.updated_at_utc() >= local.updated_at_utc() {
+                    ImportConflictChoice::UseIncoming
+                } else {
+                    ImportConflictChoice::UseLocal
+                };
+                conflicts.push(ImportConflict {
+                    id: incoming.id,
+                    local: local.clone(),
+                    incoming: incoming.clone(),
+                    choice,
+                });
+            }
+        }
+
+        let pending = PendingImport {
+            incoming_hash,
+            baseline_time,
+            items,
+            sections: parsed.sections,
+            folders: parsed.folders,
+            conflicts,
+        };
+
+        if self.import_manual_conflicts && !pending.conflicts.is_empty() {
+            self.pending_import = Some(pending);
+            return false;
+        }
+
+        self.apply_import(pending);
+        true
+    }
+
+    pub fn apply_pending_import(&mut self) -> bool {
+        let Some(pending) = self.pending_import.take() else {
+            return false;
+        };
+        self.apply_import(pending);
+        true
+    }
+
+    pub fn choose_latest_for_all_conflicts(&mut self) {
+        let Some(pending) = &mut self.pending_import else {
+            return;
+        };
+        for c in &mut pending.conflicts {
+            c.choice = if c.incoming.updated_at_utc() >= c.local.updated_at_utc() {
+                ImportConflictChoice::UseIncoming
+            } else {
+                ImportConflictChoice::UseLocal
+            };
+        }
+    }
+
+    fn apply_import(&mut self, mut pending: PendingImport) {
+        for s in pending.sections.drain(..) {
+            if !self.sections.iter().any(|x| x.id == s.id) {
+                self.sections.push(s);
+            }
+        }
+        for f in pending.folders.drain(..) {
+            if !self.folders.iter().any(|x| x.id == f.id) {
+                self.folders.push(f);
+            }
+        }
+
+        let mut conflict_by_id: std::collections::HashMap<Uuid, ImportConflictChoice> =
+            std::collections::HashMap::new();
+        for c in &pending.conflicts {
+            conflict_by_id.insert(c.id, c.choice);
+        }
+
+        let mut local_index: std::collections::HashMap<Uuid, usize> =
+            std::collections::HashMap::new();
+        for (idx, item) in self.items.iter().enumerate() {
+            local_index.insert(item.id, idx);
+        }
+
+        let baseline_time = pending.baseline_time;
+
+        for mut incoming in pending.items.drain(..) {
+            incoming.ensure_updated_at();
+
+            let Some(&idx) = local_index.get(&incoming.id) else {
+                self.items.push(incoming);
+                continue;
+            };
+
+            let local = self.items.get(idx).cloned();
+            let Some(local_item) = local else {
+                continue;
+            };
+
+            if let Some(choice) = conflict_by_id.get(&incoming.id).copied() {
+                match choice {
+                    ImportConflictChoice::UseLocal => {}
+                    ImportConflictChoice::UseIncoming => {
+                        self.items[idx] = incoming;
+                    }
+                    ImportConflictChoice::DuplicateIncoming => {
+                        let mut dup = incoming;
+                        dup.id = Uuid::new_v4();
+                        self.items.push(dup);
+                    }
+                }
+                continue;
+            }
+
+            let replace = if let Some(baseline) = baseline_time {
+                !(local_item.updated_at_utc() > baseline && incoming.updated_at_utc() > baseline)
+                    && incoming.updated_at_utc() > local_item.updated_at_utc()
+            } else {
+                incoming.updated_at_utc() > local_item.updated_at_utc()
+            };
+
+            if replace {
+                self.items[idx] = incoming;
+            }
+        }
+
+        self.ensure_builtin_sections_and_settings();
+        self.migrate_items_without_section();
+        self.migrate_items_without_updated_at();
+        self.migrate_items_with_invalid_section();
+
+        self.settings.last_sync_time = Some(chrono::Utc::now());
+        self.settings.last_sync_hash = Some(pending.incoming_hash);
+        self.show_snackbar("导入完成");
+    }
+
     pub fn poll_reminders_and_persist_if_needed(&mut self) {
         if super::reminders::poll_due_reminders_and_notify(self) {
             self.save_to_file();
@@ -651,4 +882,106 @@ impl TodoState {
                 && item.automated_source.as_deref() == Some(source)
         })
     }
+}
+
+struct ParsedImport {
+    items: Vec<TodoItem>,
+    sections: Vec<TodoSection>,
+    folders: Vec<TodoFolder>,
+}
+
+fn hash_bytes(bytes: &[u8]) -> String {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn parse_import_bytes(bytes: &[u8]) -> Result<ParsedImport, ()> {
+    if let Ok(storage) = serde_json::from_slice::<TodoStorage>(bytes) {
+        return Ok(ParsedImport {
+            items: storage.items,
+            sections: storage.sections,
+            folders: storage.folders,
+        });
+    }
+
+    if let Ok(items) = serde_json::from_slice::<Vec<TodoItem>>(bytes) {
+        return Ok(ParsedImport {
+            items,
+            sections: Vec::new(),
+            folders: Vec::new(),
+        });
+    }
+
+    #[derive(Deserialize)]
+    struct JsonlItem {
+        id: uuid::Uuid,
+        title: String,
+        completed: bool,
+        created_at: String,
+        section: String,
+        priority: u8,
+        due_at: Option<chrono::DateTime<chrono::Utc>>,
+        reminder_at: Option<chrono::DateTime<chrono::Utc>>,
+        deleted: bool,
+        deleted_at: Option<chrono::DateTime<chrono::Utc>>,
+        is_automated: bool,
+        automated_source: Option<String>,
+        description: Option<String>,
+    }
+
+    let text = std::str::from_utf8(bytes).map_err(|_| ())?;
+    let mut sections: Vec<TodoSection> = Vec::new();
+    let mut section_map: std::collections::HashMap<String, uuid::Uuid> =
+        std::collections::HashMap::new();
+    let mut items: Vec<TodoItem> = Vec::new();
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(row) = serde_json::from_str::<JsonlItem>(line) else {
+            return Err(());
+        };
+
+        let section_id = if let Some(&id) = section_map.get(&row.section) {
+            id
+        } else {
+            let section = TodoSection::new(row.section.clone());
+            let id = section.id;
+            sections.push(section);
+            section_map.insert(row.section.clone(), id);
+            id
+        };
+
+        let deleted_at = if row.deleted { row.deleted_at } else { None };
+        let reminder_sent = row.completed || row.reminder_at.is_none();
+
+        items.push(TodoItem {
+            id: row.id,
+            title: row.title,
+            completed: row.completed,
+            created_at: row.created_at,
+            updated_at: None,
+            section_id: Some(section_id),
+            reminder_at: row.reminder_at,
+            reminder_sent,
+            reminder_repeat: None,
+            due_at: row.due_at,
+            priority: row.priority.min(3),
+            deleted_at,
+            is_automated: row.is_automated,
+            automated_source: row.automated_source,
+            description: row.description,
+            tags: Vec::new(),
+        });
+    }
+
+    Ok(ParsedImport {
+        items,
+        sections,
+        folders: Vec::new(),
+    })
 }

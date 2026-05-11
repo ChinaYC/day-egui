@@ -472,6 +472,7 @@ fn apply_complete(state: &mut TodoState, completed: bool, state_changed: &mut bo
             } else if item.reminder_at.is_some() {
                 item.reminder_sent = false;
             }
+            item.touch();
             state.push_undo_replace_item(id, before);
             *state_changed = true;
         }
@@ -487,6 +488,7 @@ fn apply_delete(state: &mut TodoState, state_changed: &mut bool) {
             let before = item.clone();
             item.deleted_at = Some(chrono::Utc::now());
             item.reminder_sent = true;
+            item.touch();
             state.push_undo_replace_item(id, before);
             *state_changed = true;
         }
@@ -502,6 +504,7 @@ fn apply_move_section(state: &mut TodoState, section_id: uuid::Uuid, state_chang
             }
             let before = item.clone();
             item.section_id = Some(section_id);
+            item.touch();
             state.push_undo_replace_item(id, before);
             *state_changed = true;
         }
@@ -517,6 +520,7 @@ fn apply_priority(state: &mut TodoState, priority: u8, state_changed: &mut bool)
             }
             let before = item.clone();
             item.priority = p;
+            item.touch();
             state.push_undo_replace_item(id, before);
             *state_changed = true;
         }
@@ -539,6 +543,7 @@ fn apply_add_tags(state: &mut TodoState, input: &str, state_changed: &mut bool) 
                     item.tags.push(t.clone());
                 }
             }
+            item.touch();
             state.push_undo_replace_item(id, before);
             *state_changed = true;
         }
