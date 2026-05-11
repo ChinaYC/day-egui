@@ -1,6 +1,7 @@
 use super::state::LeetCodeState;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 use std::thread;
 
 impl LeetCodeState {

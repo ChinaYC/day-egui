@@ -188,9 +188,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         ui.label(egui::RichText::new(path_display).color(egui::Color32::LIGHT_BLUE));
 
         if ui.button("更改 (Change)").clicked() {
-            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                state.switch_storage_folder(Some(folder.to_string_lossy().to_string()));
-                *state_changed = true;
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                    state.switch_storage_folder(Some(folder.to_string_lossy().to_string()));
+                    *state_changed = true;
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                state.show_snackbar("Web 版本不支持选择本地目录");
             }
         }
 
