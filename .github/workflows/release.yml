@@ -94,24 +94,24 @@ jobs:
             mkdir -p "$APP_DIR/Contents/MacOS"
             mkdir -p "$APP_DIR/Contents/Resources"
             mv "$OUT_DIR/EfficiencyTool" "$APP_DIR/Contents/MacOS/EfficiencyTool"
-            cat > "$APP_DIR/Contents/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>EfficiencyTool</string>
-  <key>CFBundleIdentifier</key>
-  <string>com.liam.efficiencytool</string>
-  <key>CFBundleName</key>
-  <string>EfficiencyTool</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
-</dict>
-</plist>
-EOF
+            printf '%s\n' \
+              '<?xml version="1.0" encoding="UTF-8"?>' \
+              '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+              '<plist version="1.0">' \
+              '<dict>' \
+              '  <key>CFBundleExecutable</key>' \
+              '  <string>EfficiencyTool</string>' \
+              '  <key>CFBundleIdentifier</key>' \
+              '  <string>com.liam.efficiencytool</string>' \
+              '  <key>CFBundleName</key>' \
+              '  <string>EfficiencyTool</string>' \
+              '  <key>CFBundlePackageType</key>' \
+              '  <string>APPL</string>' \
+              '  <key>CFBundleShortVersionString</key>' \
+              '  <string>1.0</string>' \
+              '</dict>' \
+              '</plist>' \
+              > "$APP_DIR/Contents/Info.plist"
             chmod +x "$APP_DIR/Contents/MacOS/EfficiencyTool"
           fi
           if [ "${{ matrix.package_ext }}" = "zip" ]; then
