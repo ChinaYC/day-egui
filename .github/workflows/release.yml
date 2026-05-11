@@ -113,32 +113,6 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/EfficiencyTool-${{ matrix.artifact_name }}.*
 
-  build_web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install trunk
-        uses: taiki-e/install-action@v2
-        with:
-          tool: trunk
-
-      - name: Build web
-        shell: bash
-        run: |
-          trunk build --release --public-url ./
-          cd dist
-          tar -czf "../EfficiencyTool-web.tar.gz" .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web
-          path: EfficiencyTool-web.tar.gz
-
   build_android:
     runs-on: ubuntu-latest
     steps:
@@ -200,7 +174,7 @@ jobs:
           path: dist/EfficiencyTool-android-arm64.apk
 
   release:
-    needs: [build_desktop, build_web, build_android]
+    needs: [build_desktop, build_android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
