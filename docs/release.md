@@ -13,6 +13,11 @@ git push origin v0.1.0
 
 推送后到 GitHub 仓库的 Actions 页面查看 `Release` 工作流运行，完成后到 Releases 页面下载产物。
 
+## 触发方式 C：GitHub 网页 “Create a new release”
+
+你也可以直接在 GitHub Releases 页面点击 “Create a new release” 并发布。
+发布完成后会自动触发 `Release` 工作流（监听 `release: published`），构建并把产物上传到该 Release 的 Assets。
+
 ## 触发方式 B：GitHub 网页手动触发（无需本地 git）
 
 1. 打开仓库 → Actions
