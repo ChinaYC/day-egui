@@ -16,7 +16,9 @@ pub use app::TemplateApp;
 #[unsafe(no_mangle)]
 fn android_main(app: android_activity::AndroidApp) {
     use std::env;
-    env::set_var("RUST_BACKTRACE", "1");
+    unsafe {
+        env::set_var("RUST_BACKTRACE", "1");
+    }
     env_logger::init();
 
     let mut options = eframe::NativeOptions::default();
