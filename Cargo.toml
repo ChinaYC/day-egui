@@ -45,6 +45,7 @@ rfd = "0.17.2"
 [target.'cfg(target_os = "android")'.dependencies]
 anyhow = "1.0.102"
 env_logger = "0.11.8"
+android-activity = { version = "0.6.1", features = ["native-activity"] }
 
 [target.'cfg(all(not(target_arch = "wasm32"), target_os = "linux"))'.dependencies]
 notify-rust = "4.11.7"
