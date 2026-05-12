@@ -170,7 +170,7 @@ jobs:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
         run: |
           set -o pipefail
-          cargo apk build -p eframe_template --target aarch64-linux-android 2>&1 | tee build_android.log
+          cargo apk build --lib -p eframe_template --target aarch64-linux-android 2>&1 | tee build_android.log
           APK_PATH="$(ls -1 target/debug/apk/*.apk | head -n 1)"
           mkdir -p dist
           cp "$APK_PATH" "dist/EfficiencyTool-android-arm64.apk"
