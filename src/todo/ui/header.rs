@@ -188,12 +188,16 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
         ui.label(egui::RichText::new(path_display).color(egui::Color32::LIGHT_BLUE));
 
         if ui.button("更改 (Change)").clicked() {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
             {
                 if let Some(folder) = rfd::FileDialog::new().pick_folder() {
                     state.switch_storage_folder(Some(folder.to_string_lossy().to_string()));
                     *state_changed = true;
                 }
+            }
+            #[cfg(target_os = "android")]
+            {
+                state.show_snackbar("Android 版本不支持选择本地目录");
             }
             #[cfg(target_arch = "wasm32")]
             {
