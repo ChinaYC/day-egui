@@ -152,7 +152,9 @@ jobs:
 
           sdkmanager --install --channel=3 \
             "platform-tools" \
+            "platforms;android-30" \
             "platforms;android-34" \
+            "build-tools;30.0.3" \
             "build-tools;34.0.0" \
             "ndk;26.3.11579264"
           echo "ANDROID_SDK_ROOT=${SDKROOT}" >> "$GITHUB_ENV"
