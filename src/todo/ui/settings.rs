@@ -245,7 +245,7 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                 ui.checkbox(&mut state.import_manual_conflicts, "导入时手动解决冲突");
 
                 if ui.button("导入任务 (Import)").clicked() {
-                    #[cfg(not(target_arch = "wasm32"))]
+                    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
                     {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Todo", &["json", "jsonl"])
@@ -255,6 +255,10 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
                                 *state_changed = true;
                             }
                         }
+                    }
+                    #[cfg(target_os = "android")]
+                    {
+                        state.show_snackbar("Android 版本暂不支持导入");
                     }
                     #[cfg(target_arch = "wasm32")]
                     {

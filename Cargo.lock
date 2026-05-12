@@ -1105,6 +1105,7 @@ dependencies = [
 name = "eframe_template"
 version = "0.1.0"
 dependencies = [
+ "android-activity",
  "anyhow",
  "chrono",
  "dirs",
