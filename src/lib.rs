@@ -12,8 +12,9 @@ pub use app::TemplateApp;
 // Android entry point
 // ---------------------------------------------------------------------------
 #[cfg(target_os = "android")]
-#[no_mangle]
-fn android_main(app: eframe::android_activity::AndroidApp) {
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+fn android_main(app: android_activity::AndroidApp) {
     use std::env;
     env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
