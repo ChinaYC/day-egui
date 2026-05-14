@@ -4,6 +4,9 @@
 # trunk output folder
 dist
 
+# Local Android SDK/NDK (repo-local install)
+.android-sdk/
+
 # Rust compile target directories:
 target
 target_ra
