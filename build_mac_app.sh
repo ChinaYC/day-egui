@@ -6,7 +6,7 @@ cargo build --release
 
 # 2. 创建应用包结构
 APP_NAME="EfficiencyTool"
-DEST_DIR="${1:-/Applications}"
+DEST_DIR="${1:-./dist}"
 APP_DIR="$DEST_DIR/$APP_NAME.app"
 
 SUDO=""
@@ -39,14 +39,29 @@ cat <<EOF | $SUDO tee "$APP_DIR/Contents/Info.plist" >/dev/null
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.11</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
 </dict>
 </plist>
 EOF
 
 # 5. 赋予可执行权限
 $SUDO chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
+
+if command -v codesign >/dev/null 2>&1; then
+  codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+fi
+
+if command -v ditto >/dev/null 2>&1; then
+  ZIP_PATH="$DEST_DIR/${APP_NAME}-macos-aarch64.zip"
+  rm -f "$ZIP_PATH"
+  ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
+  echo "✅ 已生成 ZIP: $ZIP_PATH"
+fi
 
 echo "✅ 已生成 App: $APP_DIR"
 echo "你现在可以在 Finder 里双击运行。"

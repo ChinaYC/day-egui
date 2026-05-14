@@ -6,6 +6,7 @@ dist
 
 # Local Android SDK/NDK (repo-local install)
 .android-sdk/
+android-debug.keystore
 
 # Rust compile target directories:
 target

@@ -20,6 +20,18 @@ apk_name = "EfficiencyTool"
 build_targets = [ "aarch64-linux-android", "armv7-linux-androideabi" ]
 strip = "strip"
 
+[package.metadata.android.signing.android]
+path = "android-debug.keystore"
+keystore_password = "android"
+key_alias = "androiddebugkey"
+key_password = "android"
+
+[package.metadata.android.signing.release]
+path = "android-debug.keystore"
+keystore_password = "android"
+key_alias = "androiddebugkey"
+key_password = "android"
+
 [dependencies]
 egui = "0.34.1"
 eframe = { version = "0.34.1", features = ["persistence"] }
@@ -57,6 +69,12 @@ web-sys = "0.3.70"              # to access the DOM (to hide the loading text)
 
 [profile.release]
 opt-level = 2 # fast and small wasm
+
+[profile.android]
+inherits = "release"
+opt-level = 3
+debug = false
+strip = "symbols"
 
 # Optimize all dependencies even in debug builds:
 [profile.dev.package."*"]
