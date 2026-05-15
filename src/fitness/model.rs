@@ -83,6 +83,8 @@ pub struct FitnessProfile {
     pub input: FitnessProfileInput,
     #[serde(default)]
     pub last_plan: Option<FitnessPlan>,
+    #[serde(default)]
+    pub completed_workout_dates: Vec<String>,
 }
 
 impl FitnessProfile {
@@ -93,6 +95,7 @@ impl FitnessProfile {
             created_at: utc_now(),
             input: FitnessProfileInput::default(),
             last_plan: None,
+            completed_workout_dates: Vec::new(),
         }
     }
 }

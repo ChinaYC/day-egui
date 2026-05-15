@@ -1,7 +1,10 @@
-use chrono::{NaiveDate, TimeZone, Utc};
+use chrono::{Duration, NaiveDate, TimeZone, Utc};
 
 use super::FitnessState;
-use super::model::{DailyWorkoutPlan, DietPlan, FitnessPhase, FitnessPlan, Sex, TrainingCondition};
+use super::model::{
+    DailyWorkoutPlan, DietPlan, FitnessPhase, FitnessPlan, MetricLevel, PlanMetric, Sex,
+    TrainingCondition,
+};
 use crate::fitness::health;
 use crate::todo::{TodoItem, TodoState};
 
@@ -85,64 +88,82 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("JSON 导入/导出").strong());
-    ui.add_space(6.0);
-
-    ui.horizontal(|ui| {
-        if ui.button("复制模板").clicked() {
-            let template = super::model::FitnessProfileInput::default();
-            if let Ok(s) = serde_json::to_string_pretty(&template) {
-                ui.ctx().copy_text(s);
-                state.error_msg = None;
-            } else {
-                state.error_msg = Some("模板生成失败".to_string());
-            }
-        }
-        if ui.button("复制当前计划 JSON").clicked() {
-            let Some(p) = state.selected_profile() else {
-                state.error_msg = Some("请先选择人员".to_string());
-                return;
-            };
-            let Some(plan) = &p.last_plan else {
-                state.error_msg = Some("当前人员还没有生成计划".to_string());
-                return;
-            };
-            if let Ok(s) = serde_json::to_string_pretty(plan) {
-                ui.ctx().copy_text(s.clone());
-                state.last_export_json = s;
-                state.error_msg = None;
-            } else {
-                state.error_msg = Some("JSON 导出失败".to_string());
-            }
-        }
-    });
-
-    ui.add_space(6.0);
-    ui.label("粘贴 JSON 后点击导入：");
-    ui.add(egui::TextEdit::multiline(&mut state.import_json).desired_rows(6));
-    ui.horizontal(|ui| {
-        if ui.button("导入到当前人员").clicked() {
-            let import_json = state.import_json.clone();
-            let input =
-                match serde_json::from_str::<super::model::FitnessProfileInput>(&import_json) {
-                    Ok(v) => v,
-                    Err(_) => {
-                        state.error_msg = Some("JSON 解析失败，请确认格式正确".to_string());
-                        return;
+    egui::CollapsingHeader::new("JSON 导入/导出")
+        .id_salt("fitness_json_panel")
+        .default_open(false)
+        .show(ui, |ui| {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button("复制模板").clicked() {
+                    let template = super::model::FitnessProfileInput::default();
+                    if let Ok(s) = serde_json::to_string_pretty(&template) {
+                        ui.ctx().copy_text(s);
+                        state.error_msg = None;
+                    } else {
+                        state.error_msg = Some("模板生成失败".to_string());
                     }
-                };
-            let Some(p) = state.selected_profile_mut() else {
-                state.error_msg = Some("请先选择人员".to_string());
-                return;
-            };
-            p.input = input;
-            state.error_msg = None;
-            *state_changed = true;
-        }
-        if ui.button("清空").clicked() {
-            state.import_json.clear();
-        }
-    });
+                }
+
+                if ui.button("复制当前资料 JSON").clicked() {
+                    let Some(p) = state.selected_profile() else {
+                        state.error_msg = Some("请先选择人员".to_string());
+                        return;
+                    };
+                    if let Ok(s) = serde_json::to_string_pretty(&p.input) {
+                        ui.ctx().copy_text(s);
+                        state.error_msg = None;
+                    } else {
+                        state.error_msg = Some("JSON 导出失败".to_string());
+                    }
+                }
+
+                if ui.button("复制当前计划 JSON").clicked() {
+                    let Some(p) = state.selected_profile() else {
+                        state.error_msg = Some("请先选择人员".to_string());
+                        return;
+                    };
+                    let Some(plan) = &p.last_plan else {
+                        state.error_msg = Some("当前人员还没有生成计划".to_string());
+                        return;
+                    };
+                    if let Ok(s) = serde_json::to_string_pretty(plan) {
+                        ui.ctx().copy_text(s.clone());
+                        state.last_export_json = s;
+                        state.error_msg = None;
+                    } else {
+                        state.error_msg = Some("JSON 导出失败".to_string());
+                    }
+                }
+            });
+
+            ui.add_space(6.0);
+            ui.label("粘贴资料 JSON 后点击导入：");
+            ui.add(egui::TextEdit::multiline(&mut state.import_json).desired_rows(6));
+            ui.horizontal(|ui| {
+                if ui.button("导入到当前人员").clicked() {
+                    let import_json = state.import_json.clone();
+                    let input = match serde_json::from_str::<super::model::FitnessProfileInput>(
+                        &import_json,
+                    ) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            state.error_msg = Some("JSON 解析失败，请确认格式正确".to_string());
+                            return;
+                        }
+                    };
+                    let Some(p) = state.selected_profile_mut() else {
+                        state.error_msg = Some("请先选择人员".to_string());
+                        return;
+                    };
+                    p.input = input;
+                    state.error_msg = None;
+                    *state_changed = true;
+                }
+                if ui.button("清空").clicked() {
+                    state.import_json.clear();
+                }
+            });
+        });
 }
 
 fn show_profile_detail(
@@ -355,31 +376,201 @@ fn show_profile_detail(
         if let Some(plan) = &profile.last_plan {
             ui.separator();
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("结果预览").strong());
-            if let Some(bmi) = plan.bmi {
-                ui.label(format!("BMI: {:.1}", bmi));
-            }
-            ui.label(format!(
-                "阶段: {}",
-                match plan.phase {
-                    FitnessPhase::FatLoss => "减脂",
-                    FitnessPhase::MuscleGain => "增肌",
-                    FitnessPhase::Maintenance => "维持",
-                }
-            ));
-            ui.label(format!(
-                "建议训练天数: {} / 是否建议每天训练: {}",
-                plan.recommended_weekly_training_days,
-                if plan.need_daily_training {
-                    "是"
-                } else {
-                    "否"
-                }
-            ));
+            ui.label(egui::RichText::new("计划与执行").strong());
             ui.add_space(6.0);
-            for line in &plan.health_summary {
-                ui.label(format!("- {line}"));
+
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "阶段：{} / 建议训练天数：{}",
+                    phase_text(plan.phase),
+                    plan.recommended_weekly_training_days
+                ));
+                ui.add_space(12.0);
+                ui.label(format!(
+                    "开始日期：{} / 生成时间：{}",
+                    plan.start_date,
+                    plan.generated_at
+                        .with_timezone(&chrono::Local)
+                        .format("%Y-%m-%d %H:%M")
+                ));
+            });
+
+            if let Some(bmi) = plan.bmi {
+                ui.add_space(4.0);
+                ui.label(format!("BMI：{bmi:.1}"));
             }
+
+            if !plan.metrics.is_empty() {
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("指标解读").strong());
+                egui::Grid::new("fitness_plan_metrics_grid")
+                    .num_columns(3)
+                    .spacing(egui::vec2(10.0, 6.0))
+                    .show(ui, |ui| {
+                        for m in &plan.metrics {
+                            plan_metric_row(ui, m);
+                        }
+                    });
+            }
+
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("建议摘要").strong());
+            for line in &plan.health_summary {
+                ui.label(format!("• {line}"));
+            }
+
+            let start = NaiveDate::parse_from_str(&plan.start_date, "%Y-%m-%d")
+                .unwrap_or_else(|_| chrono::Local::now().date_naive());
+            let today = chrono::Local::now().date_naive();
+
+            ui.add_space(10.0);
+            egui::CollapsingHeader::new("训练计划（可勾选完成 / 一键同步到 Todo）")
+                .id_salt("fitness_training_plan")
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("同步未完成到 Todo").clicked() {
+                            let folder_id = get_or_create_fitness_folder(todo);
+                            let section_name = format!("健身 - {}", profile.name);
+                            let section_id =
+                                get_or_create_section_in_folder(todo, &section_name, folder_id);
+
+                            let mut changed_any = false;
+                            for day in &plan.weekly_training_plan {
+                                if day.title.contains("休息") {
+                                    continue;
+                                }
+                                let date = start + Duration::days(day.day_index as i64);
+                                let date_str = date.format("%Y-%m-%d").to_string();
+                                if profile.completed_workout_dates.iter().any(|d| d == &date_str) {
+                                    continue;
+                                }
+                                if sync_day_to_todo_with_section(todo, day, date, section_id) {
+                                    changed_any = true;
+                                }
+                            }
+                            if changed_any {
+                                todo.save_to_file();
+                                *state_changed = true;
+                            }
+                        }
+
+                        if ui.button("清空完成标记").clicked() {
+                            profile.completed_workout_dates.clear();
+                            *state_changed = true;
+                        }
+                    });
+
+                    ui.add_space(6.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("fitness_week_plan_scroll")
+                        .max_height(360.0)
+                        .show(ui, |ui| {
+                            for day in &plan.weekly_training_plan {
+                                let date = start + Duration::days(day.day_index as i64);
+                                let date_str = date.format("%Y-%m-%d").to_string();
+                                let is_today = date == today;
+
+                                let mut done = profile
+                                    .completed_workout_dates
+                                    .iter()
+                                    .any(|d| d == &date_str);
+
+                                let header = format!(
+                                    "{}  {}（{}min）{}",
+                                    date_str,
+                                    day.title,
+                                    day.duration_min,
+                                    if is_today { "  ← 今天" } else { "" }
+                                );
+
+                                egui::CollapsingHeader::new(
+                                    egui::RichText::new(header).strong().color(if is_today {
+                                        egui::Color32::from_rgb(46, 204, 113)
+                                    } else {
+                                        ui.visuals().text_color()
+                                    }),
+                                )
+                                .id_salt(format!("fitness_day_{}_{}", profile.id, day.day_index))
+                                .default_open(is_today)
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        if ui.button("复制训练").clicked() {
+                                            ui.ctx().copy_text(day.workout.join("\n"));
+                                            state.error_msg = None;
+                                        }
+
+                                        if !day.title.contains("休息")
+                                            && ui.button("同步到 Todo").clicked()
+                                        {
+                                            if sync_day_to_todo(todo, &profile.name, day, date) {
+                                                *state_changed = true;
+                                            }
+                                        }
+
+                                        if ui.checkbox(&mut done, "完成").changed() {
+                                            if done {
+                                                if !profile
+                                                    .completed_workout_dates
+                                                    .iter()
+                                                    .any(|d| d == &date_str)
+                                                {
+                                                    profile.completed_workout_dates.push(
+                                                        date_str.clone(),
+                                                    );
+                                                }
+                                            } else {
+                                                profile.completed_workout_dates.retain(|d| {
+                                                    d != &date_str
+                                                });
+                                            }
+                                            *state_changed = true;
+                                        }
+                                    });
+
+                                    ui.add_space(4.0);
+                                    for (idx, step) in day.workout.iter().enumerate() {
+                                        ui.label(format!("{}. {step}", idx + 1));
+                                    }
+                                });
+
+                                ui.add_space(6.0);
+                            }
+                        });
+                });
+
+            ui.add_space(10.0);
+            egui::CollapsingHeader::new("饮食建议（按体重自动换算）")
+                .id_salt("fitness_diet_plan")
+                .default_open(true)
+                .show(ui, |ui| {
+                    let diet = &plan.weekly_diet_suggestions;
+                    let w = profile.input.weight_kg.unwrap_or(0.0);
+                    ui.horizontal(|ui| {
+                        ui.label(format!(
+                            "蛋白：{:.1} g/kg",
+                            diet.daily_protein_g_per_kg
+                        ));
+                        ui.add_space(10.0);
+                        ui.label(format!("脂肪：{:.1} g/kg", diet.daily_fat_g_per_kg));
+                        ui.add_space(10.0);
+                        ui.label(format!("碳水：{:.1} g/kg", diet.daily_carbs_g_per_kg));
+                    });
+                    if w > 0.0 {
+                        ui.add_space(4.0);
+                        ui.label(format!(
+                            "按体重 {:.1}kg 估算：蛋白 {:.0}g / 脂肪 {:.0}g / 碳水 {:.0}g",
+                            w,
+                            diet.daily_protein_g_per_kg * w,
+                            diet.daily_fat_g_per_kg * w,
+                            diet.daily_carbs_g_per_kg * w
+                        ));
+                    }
+                    ui.add_space(6.0);
+                    for line in &diet.structure {
+                        ui.label(format!("• {line}"));
+                    }
+                });
         }
     }
 
@@ -400,6 +591,30 @@ fn metric_row(ui: &mut egui::Ui, ind: &health::MetricIndicator) {
     });
     ui.label(egui::RichText::new(ind.reference_text.clone()).color(egui::Color32::GRAY));
     ui.end_row();
+}
+
+fn plan_metric_row(ui: &mut egui::Ui, metric: &PlanMetric) {
+    ui.label(metric.name.clone());
+    let (color, symbol) = match metric.level {
+        MetricLevel::Green => (egui::Color32::from_rgb(46, 204, 113), "●"),
+        MetricLevel::Yellow => (egui::Color32::from_rgb(241, 196, 15), "●"),
+        MetricLevel::Red => (egui::Color32::from_rgb(231, 76, 60), "●"),
+        MetricLevel::Unknown => (egui::Color32::GRAY, "○"),
+    };
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(symbol).color(color));
+        ui.label(egui::RichText::new(metric.value_text.clone()).color(color));
+    });
+    ui.label(egui::RichText::new(metric.reference_text.clone()).color(egui::Color32::GRAY));
+    ui.end_row();
+}
+
+fn phase_text(phase: FitnessPhase) -> &'static str {
+    match phase {
+        FitnessPhase::FatLoss => "减脂",
+        FitnessPhase::MuscleGain => "增肌",
+        FitnessPhase::Maintenance => "维持",
+    }
 }
 
 fn generate_plan(input: &super::model::FitnessProfileInput) -> Result<FitnessPlan, String> {
@@ -601,22 +816,60 @@ fn sync_plan_to_todo(todo: &mut TodoState, person: &str, plan: &FitnessPlan) {
 
     let today = NaiveDate::parse_from_str(&plan.start_date, "%Y-%m-%d")
         .unwrap_or_else(|_| chrono::Local::now().date_naive());
+    let mut changed_any = false;
     for day in &plan.weekly_training_plan {
         if day.title.contains("休息") {
             continue;
         }
         let date = today + chrono::Duration::days(day.day_index as i64);
-        let due_at = local_date_to_utc_end_of_day(date);
-        let mut item = TodoItem::new(
-            format!("健身：{}（{}min）", day.title, day.duration_min),
-            Some(day.workout.join("\n")),
-            Some(section_id),
-        );
-        item.due_at = due_at;
-        todo.items.push(item);
+        if sync_day_to_todo_with_section(todo, day, date, section_id) {
+            changed_any = true;
+        }
     }
 
-    todo.save_to_file();
+    if changed_any {
+        todo.save_to_file();
+    }
+}
+
+fn sync_day_to_todo(
+    todo: &mut TodoState,
+    person: &str,
+    day: &DailyWorkoutPlan,
+    date: NaiveDate,
+) -> bool {
+    let folder_id = get_or_create_fitness_folder(todo);
+    let section_name = format!("健身 - {person}");
+    let section_id = get_or_create_section_in_folder(todo, &section_name, folder_id);
+    let changed = sync_day_to_todo_with_section(todo, day, date, section_id);
+    if changed {
+        todo.save_to_file();
+    }
+    changed
+}
+
+fn sync_day_to_todo_with_section(
+    todo: &mut TodoState,
+    day: &DailyWorkoutPlan,
+    date: NaiveDate,
+    section_id: uuid::Uuid,
+) -> bool {
+    let due_at = local_date_to_utc_end_of_day(date);
+    let title = format!("健身：{}（{}min）", day.title, day.duration_min);
+
+    if todo.items.iter().any(|item| {
+        item.deleted_at.is_none()
+            && item.title == title
+            && item.due_at == due_at
+            && item.section_id == Some(section_id)
+    }) {
+        return false;
+    }
+
+    let mut item = TodoItem::new(title, Some(day.workout.join("\n")), Some(section_id));
+    item.due_at = due_at;
+    todo.items.push(item);
+    true
 }
 
 fn parse_start_date(input: Option<&str>) -> Result<NaiveDate, String> {
