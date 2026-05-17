@@ -1,15 +1,17 @@
 use super::browser::wait_for_element_with_text;
-use super::daily::{add_log, check_cancel};
+use super::daily::check_cancel;
+use super::utils::ElementUtils;
 use anyhow::Result;
 use headless_chrome::Tab;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing::info;
 
 pub fn extract_solution_code(
     tab: &Arc<Tab>,
     problem_url: &str,
-    logs: &Arc<Mutex<Vec<String>>>,
+    _logs: &Arc<Mutex<Vec<String>>>,
     cancel_flag: &Arc<AtomicBool>,
 ) -> Result<(String, String)> {
     // 构造题解 URL: 把链接最后的 / 去掉（如果有），然后加上 /solutions/
@@ -18,7 +20,7 @@ pub fn extract_solution_code(
     let base_url_no_query = base_url.split('?').next().unwrap_or(base_url);
     let solution_url = format!("{}/solutions/", base_url_no_query);
 
-    add_log(logs, "正在进入题解区...");
+    info!(user = true, "正在进入题解区...");
     tab.navigate_to(&solution_url)
         .map_err(|e| anyhow::anyhow!(e))?;
     std::thread::sleep(Duration::from_secs(5));
@@ -35,7 +37,7 @@ pub fn extract_solution_code(
     .map_err(|e| anyhow::anyhow!("题解区加载超时: {}", e))?;
 
     check_cancel(cancel_flag)?;
-    add_log(logs, "正在选择官方或热门题解...");
+    info!(user = true, "正在选择官方或热门题解...");
     tab.evaluate(
         r#"
         (function() {
@@ -97,7 +99,7 @@ pub fn extract_solution_code(
         cancel_flag,
     )
     .map_err(|e| anyhow::anyhow!("题解代码区加载超时: {}", e))?;
-    add_log(logs, "✅ 题解页面加载完成，开始选择 Rust 或 C++ 语言...");
+    info!(user = true, "✅ 题解页面加载完成，开始选择 Rust 或 C++ 语言...");
 
     check_cancel(cancel_flag)?;
 
@@ -137,9 +139,17 @@ pub fn extract_solution_code(
             const findLangTab = (lang) => {
                 const candidates = Array.from(document.querySelectorAll('[role="tab"], button, div, span, li'))
                     .filter(el => !el.closest('.monaco-editor'))
-                    .filter(el => (el.innerText || '').trim() === lang)
-                    .filter(isVisible);
-                return candidates[0] || null;
+                    .filter(isVisible)
+                    .map(el => ({ el, text: (el.innerText || '').trim() }))
+                    .filter(({ text }) => {
+                        return text === lang || 
+                               text === lang + ' (Beta)' || 
+                               text === lang + ' (New)' ||
+                               (text.startsWith(lang) && text.length < lang.length + 15);
+                    });
+                
+                candidates.sort((a, b) => a.text.length - b.text.length);
+                return candidates[0] ? candidates[0].el : null;
             };
 
             const clickTab = (lang) => {
@@ -179,8 +189,9 @@ pub fn extract_solution_code(
 
     std::thread::sleep(Duration::from_secs(2));
 
-    add_log(logs, &format!("提取 {} 题解代码...", selected_lang));
-    let code_eval = tab.evaluate(
+    info!(user = true, "提取 {} 题解代码...", selected_lang);
+    let json_str = ElementUtils::eval_string(
+        tab,
         r#"
         (function() {
             const codeBlocks = document.querySelectorAll(
@@ -210,21 +221,14 @@ pub fn extract_solution_code(
             }
             return JSON.stringify({code: "", lang: "Unknown"});
         })();
-        "#,
-        false
-    ).map_err(|e| anyhow::anyhow!(e))?;
-
-    let json_str = code_eval
-        .value
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| r#"{"code":"","lang":"Unknown"}"#.to_string());
+        "#
+    )?;
 
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
     let extracted_code = normalize_code(parsed["code"].as_str().unwrap_or(""));
     let code_lang = parsed["lang"].as_str().unwrap_or("Unknown").to_string();
 
     if extracted_code.is_empty() {
-        add_log(logs, "❌ 未提取到代码，请检查题解页面是否正常");
         return Err(anyhow::anyhow!("未提取到代码 (Failed to extract code)"));
     }
 
@@ -238,13 +242,11 @@ pub fn extract_solution_code(
     }
 
     let code_with_comment = format!("//day编写 ({})\n{}", selected_lang, extracted_code);
-    add_log(
-        logs,
-        &format!(
-            "✅ 代码提取成功 ({} 语言, {} 字符)",
-            selected_lang,
-            code_with_comment.len()
-        ),
+    info!(
+        user = true,
+        "✅ 代码提取成功 ({} 语言, {} 字符)",
+        selected_lang,
+        code_with_comment.len()
     );
 
     Ok((code_with_comment, selected_lang))

@@ -1,9 +1,11 @@
-use super::daily::{add_log, check_cancel};
+use super::daily::check_cancel;
+use super::utils::ElementUtils;
 use anyhow::Result;
 use headless_chrome::Tab;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing::{debug, error, info, warn};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum JudgeOutcome {
@@ -25,7 +27,7 @@ fn escape_for_js_template_literal(s: &str) -> String {
 }
 
 fn retry<T, F>(
-    logs: &Arc<Mutex<Vec<String>>>,
+    _logs: &Arc<Mutex<Vec<String>>>,
     cancel_flag: &Arc<AtomicBool>,
     label: &str,
     attempts: usize,
@@ -42,10 +44,7 @@ where
                 if i >= attempts {
                     return Err(e);
                 }
-                add_log(
-                    logs,
-                    &format!("{}失败，准备重试 ({}/{}): {}", label, i, attempts, e),
-                );
+                warn!("{}失败，准备重试 ({}/{}): {}", label, i, attempts, e);
                 std::thread::sleep(Duration::from_millis(600 * i as u64));
             }
         }
@@ -54,8 +53,7 @@ where
 }
 
 fn read_judge_outcome(tab: &Arc<Tab>) -> Result<(JudgeOutcome, String)> {
-    let eval = tab.evaluate(
-        r#"
+    let js_code = r#"
         (function() {
             const text = (document.body && document.body.innerText) ? document.body.innerText : "";
             const hay = text.replace(/\s+/g, " ").trim();
@@ -74,14 +72,17 @@ fn read_judge_outcome(tab: &Arc<Tab>) -> Result<(JudgeOutcome, String)> {
 
             return pick("Unknown", hay.slice(0, 2600));
         })();
-        "#,
-        false,
-    )?;
+        "#;
+    
+    debug!("执行读取判题结果 JS");
+    let eval = tab.evaluate(js_code, false)?;
 
     let json_str = eval
         .value
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| r#"{"kind":"Unknown","snippet":""}"#.to_string());
+    
+    debug!("判题结果响应: {}", json_str);
 
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
     let kind = parsed["kind"].as_str().unwrap_or("Unknown");
@@ -127,136 +128,131 @@ fn wait_for_judge_result(
 }
 
 fn try_switch_language(tab: &Arc<Tab>, lang: &str) -> Result<bool> {
+    let lang_safe = escape_for_js_template_literal(lang);
+    debug!("执行切换语言 JS, 目标: {}", lang);
     let eval = tab.evaluate(
         &format!(
             r#"
-            (function() {{
+            (async function() {{
                 const target = `{}`;
-                const langs = new Set(["C++","Java","Python","Python3","Rust","Go","JavaScript","TypeScript","C","C#","Kotlin","Swift"]);
-
                 const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
                 const visible = (el) => {{
                     if (!el) return false;
-                    if (el.offsetParent === null) return false;
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) return false;
                     const style = window.getComputedStyle(el);
-                    if (!style) return true;
-                    return style.visibility !== "hidden" && style.display !== "none";
+                    return style && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
                 }};
 
-                const findLangButtonNearSmartMode = (ctx) => {{
-                    const buttons = Array.from(ctx.querySelectorAll("button")).filter(visible);
-                    if (buttons.length === 0) return null;
+                // 1. 查找语言切换按钮 (改进版)
+                const findLangBtn = () => {{
+                    // 使用 reverse() 从后往前找，因为右侧编辑器通常在 DOM 树的较后位置
+                    const buttons = Array.from(document.querySelectorAll('button, [role="button"], [role="combobox"]')).reverse();
+                    // 优先找明确包含当前语言名称的按钮
+                    let btn = buttons.find(b => {{
+                        const text = norm(b.innerText);
+                        return visible(b) && text.length < 20 && (
+                            text.includes("Rust") || text.includes("C++") || text.includes("Java") || 
+                            text.includes("Python") || text.includes("Go") || text.includes("JavaScript") ||
+                            text.includes("C#") || text.includes("TypeScript") || text.includes("PHP") ||
+                            text.includes("Ruby") || text.includes("Swift") || text.includes("Kotlin")
+                        );
+                    }});
+                    
+                    if (!btn) {{
+                        // 兜底：寻找带有 aria-haspopup 的按钮，或者 id 包含 headlessui-listbox-button
+                        btn = buttons.find(b => {{
+                            return visible(b) && (
+                                b.getAttribute('aria-haspopup') === 'listbox' || 
+                                (b.id && b.id.includes('headlessui-listbox-button'))
+                            );
+                        }});
+                    }}
+                    return btn;
+                }};
 
-                    const smart = buttons.find(b => {{
-                        const t = norm(b.innerText);
-                        return t.includes("智能模式") || t.toLowerCase().includes("smart");
+                let btn = findLangBtn();
+                if (!btn) return JSON.stringify({{ ok: false, reason: "lang-button-not-found" }});
+
+                const currentLang = norm(btn.innerText);
+                if (currentLang.includes(target)) return JSON.stringify({{ ok: true, reason: "already-set" }});
+
+                // 2. 点击展开列表 (模拟完整点击事件)
+                const fireClick = (el) => {{
+                    el.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true, cancelable: true, view: window }}));
+                    el.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true, cancelable: true, view: window }}));
+                    el.click();
+                }};
+
+                fireClick(btn);
+                
+                // 等待列表出现 (增加等待时间)
+                await new Promise(r => setTimeout(r, 800));
+
+                // 3. 在整个文档中查找目标语言选项 (更广泛的搜索)
+                const findTargetOption = () => {{
+                    // 不依赖特定 role，因为 LeetCode 有时会用纯 div/span 布局
+                    const candidates = Array.from(document.querySelectorAll('*'))
+                        .reverse()
+                        .filter(visible)
+                        .filter(el => el.children.length <= 1) // 排除大容器，只保留叶子节点或包含单一图标的节点
+                        .map(el => ({{ el, text: norm(el.innerText || el.textContent) }}))
+                        .filter(({{ text }}) => {{
+                            return text === target || 
+                                   text === target + " (Beta)" || 
+                                   text === target + " (New)";
+                        }});
+                    
+                    // 过滤掉明显的非选项元素（如文章里的代码块标签或大段落）
+                    const validCandidates = candidates.filter(({{ el }}) => {{
+                        const tag = el.tagName.toLowerCase();
+                        if (tag === 'p' || tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'code' || tag === 'pre') return false;
+                        return true;
                     }});
 
-                    if (smart) {{
-                        const idx = buttons.indexOf(smart);
-                        let best = null;
-                        let bestDist = 1e9;
-                        for (let i = 0; i < buttons.length; i++) {{
-                            const t = norm(buttons[i].innerText);
-                            if (!langs.has(t)) continue;
-                            const dist = Math.abs(i - idx);
-                            if (dist < bestDist) {{
-                                bestDist = dist;
-                                best = buttons[i];
-                            }}
+                    if (validCandidates.length > 0) {{
+                        // 优先找带有 cursor: pointer 的，因为选项通常可以点击
+                        const pointerCandidates = validCandidates.filter(({{ el }}) => window.getComputedStyle(el).cursor === 'pointer');
+                        if (pointerCandidates.length > 0) {{
+                            // 如果选中的元素有特定的可点击祖先，优先返回祖先以确保点击有效
+                            const opt = pointerCandidates[0].el.closest('[role="option"], [role="menuitem"], li, .ant-select-item') || pointerCandidates[0].el;
+                            return opt;
                         }}
-                        if (best) return best;
+                        
+                        const opt = validCandidates[0].el.closest('[role="option"], [role="menuitem"], li, .ant-select-item') || validCandidates[0].el;
+                        return opt;
                     }}
-
-                    return buttons.find(b => langs.has(norm(b.innerText))) || null;
+                    return null;
                 }};
 
-                const editor = document.querySelector(".monaco-editor");
-                let scope = editor;
-                for (let i = 0; i < 10 && scope && scope.parentElement; i++) scope = scope.parentElement;
-                const root = scope || document;
+                let option = findTargetOption();
+                if (!option) {{
+                    // 尝试再次点击按钮（有时候第一次点击没反应）
+                    fireClick(btn);
+                    await new Promise(r => setTimeout(r, 800));
+                    option = findTargetOption();
+                }}
 
-                const btn = findLangButtonNearSmartMode(root) || findLangButtonNearSmartMode(document);
-                if (!btn) return JSON.stringify({{ ok: false, current: "", reason: "no-lang-button" }});
+                if (!option) return JSON.stringify({{ ok: false, reason: "option-not-found", current: currentLang }});
 
-                const current = norm(btn.innerText);
-                if (current === target) return JSON.stringify({{ ok: true, current, reason: "already" }});
-
-                btn.click();
-
-                const selectTarget = () => {{
-                    const popoverSelectors = [
-                        '[role="listbox"]',
-                        '[role="menu"]',
-                        '[role="dialog"]',
-                        'div[class*="popover"]',
-                        'div[class*="dropdown"]',
-                        'div[class*="select"]',
-                        'div[class*="Select"]',
-                    ].join(',');
-
-                    const popovers = Array.from(document.querySelectorAll(popoverSelectors))
-                        .filter(visible)
-                        .filter(p => norm(p.textContent).includes(target));
-
-                    const popupRoot = popovers[0] || document;
-
-                    const candidates = Array.from(popupRoot.querySelectorAll('li,button,a,div,span'))
-                        .filter(visible)
-                        .filter(el => norm(el.textContent) === target);
-
-                    if (candidates.length === 0) return false;
-
-                    const pickClickable = (el) => {{
-                        let cur = el;
-                        while (cur && cur !== document.body) {{
-                            const role = (cur.getAttribute && cur.getAttribute('role')) || '';
-                            const tag = (cur.tagName || '').toUpperCase();
-                            const style = window.getComputedStyle(cur);
-                            const cursor = style ? style.cursor : '';
-
-                            if (role === 'option' || role === 'menuitem') return cur;
-                            if (tag === 'LI' || tag === 'BUTTON' || tag === 'A') return cur;
-                            if (cursor === 'pointer') return cur;
-
-                            cur = cur.parentElement;
-                        }}
-                        return el;
-                    }};
-
-                    const targetEl = pickClickable(candidates[0]);
-                    if (targetEl.scrollIntoView) {{
-                        targetEl.scrollIntoView({{ block: 'center', inline: 'center' }});
-                    }}
-
-                    const fire = (type) => {{
-                        targetEl.dispatchEvent(new MouseEvent(type, {{ bubbles: true, cancelable: true, view: window }}));
-                    }};
-
-                    fire('mouseover');
-                    fire('mousedown');
-                    fire('mouseup');
-                    fire('click');
-                    return true;
-                }};
-
-                const readCurrent = () => {{
-                    const btn2 = findLangButtonNearSmartMode(root) || btn;
-                    return norm(btn2.innerText);
-                }};
-
-                return new Promise((resolve) => {{
-                    setTimeout(() => {{
-                        const clicked = selectTarget();
-                        setTimeout(() => {{
-                            const cur2 = readCurrent();
-                            resolve(JSON.stringify({{ ok: cur2 === target, current: cur2, clicked }}));
-                        }}, 450);
-                    }}, 300);
+                // 4. 点击选项
+                fireClick(option);
+                
+                // 等待切换完成
+                await new Promise(r => setTimeout(r, 1000));
+                
+                // 5. 再次检查当前语言
+                btn = findLangBtn();
+                const finalLang = btn ? norm(btn.innerText) : "";
+                const ok = finalLang.includes(target);
+                return JSON.stringify({{ 
+                    ok: ok, 
+                    current: finalLang, 
+                    reason: ok ? "" : `Final language "${{finalLang}}" does not match target "${{target}}"` 
                 }});
             }})();
             "#,
-            escape_for_js_template_literal(lang)
+            lang_safe
         ),
         true,
     )?;
@@ -264,10 +260,16 @@ fn try_switch_language(tab: &Arc<Tab>, lang: &str) -> Result<bool> {
     let json_str = eval
         .value
         .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| r#"{"ok":false,"current":""}"#.to_string());
+        .unwrap_or_else(|| r#"{"ok":false,"reason":"eval-failed"}"#.to_string());
+    
+    debug!("切换语言结果响应: {}", json_str);
 
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
-    Ok(parsed["ok"].as_bool().unwrap_or(false))
+    let ok = parsed["ok"].as_bool().unwrap_or(false);
+    if !ok {
+        warn!("切换语言失败: {}", parsed["reason"].as_str().unwrap_or("unknown"));
+    }
+    Ok(ok)
 }
 
 fn try_set_code(tab: &Arc<Tab>, code: &str) -> Result<(bool, String)> {
@@ -338,54 +340,15 @@ fn try_set_code(tab: &Arc<Tab>, code: &str) -> Result<(bool, String)> {
 }
 
 fn try_click_submit(tab: &Arc<Tab>) -> Result<bool> {
-    let eval = tab.evaluate(
-        r#"
-        (function() {
-            const buttons = Array.from(document.querySelectorAll('button'));
-            const target = buttons.find(btn => {
-                const t = (btn.innerText || '').trim();
-                if (!t) return false;
-                if (!(t === '提交' || t === 'Submit' || t.includes('提交'))) return false;
-                if (btn.disabled) return false;
-                const ariaDisabled = btn.getAttribute('aria-disabled');
-                if (ariaDisabled === 'true') return false;
-                return true;
-            });
-            if (target) {
-                target.click();
-                return true;
-            }
-            return false;
-        })();
-        "#,
-        false,
-    )?;
-
-    Ok(eval.value.and_then(|v| v.as_bool()).unwrap_or(false))
+    ElementUtils::click_by_text(tab, "button", "提交")
 }
 
 fn try_claim_points(tab: &Arc<Tab>) -> Result<bool> {
-    let eval = tab.evaluate(
-        r#"
-        (function() {
-            const text = document.body ? document.body.innerText : "";
-            if (!text.includes("恭喜完成今日打卡任务")) return false;
-            const buttons = Array.from(document.querySelectorAll("button"));
-            const target = buttons.find(btn => {
-                const t = (btn.innerText || "").trim();
-                if (!t) return false;
-                return (t.includes("领取") && t.includes("积分")) || t.includes("领取奖励");
-            });
-            if (target) {
-                target.click();
-                return true;
-            }
-            return false;
-        })();
-        "#,
-        false,
-    )?;
-    Ok(eval.value.and_then(|v| v.as_bool()).unwrap_or(false))
+    let has_claim = ElementUtils::eval_bool(tab, "document.body.innerText.includes('恭喜完成今日打卡任务')")?;
+    if !has_claim {
+        return Ok(false);
+    }
+    ElementUtils::click_by_text(tab, "button", "领取")
 }
 
 pub fn submit_code(
@@ -395,14 +358,11 @@ pub fn submit_code(
     logs: &Arc<Mutex<Vec<String>>>,
     cancel_flag: &Arc<AtomicBool>,
 ) -> Result<()> {
-    add_log(logs, "在题解页面右侧准备填入代码...");
+    info!(user = true, "在题解页面右侧准备填入代码...");
 
     retry(logs, cancel_flag, "切换语言", 3, |attempt| {
         check_cancel(cancel_flag)?;
-        add_log(
-            logs,
-            &format!("正在右侧编辑器切换语言为 {}... (第 {} 次)", lang, attempt),
-        );
+        info!(user = true, "正在右侧编辑器切换语言为 {}... (第 {} 次)", lang, attempt);
         let ok = try_switch_language(tab, lang)?;
         if ok {
             Ok(())
@@ -413,7 +373,7 @@ pub fn submit_code(
 
     let (set_ok, method) = retry(logs, cancel_flag, "写入代码", 3, |attempt| {
         check_cancel(cancel_flag)?;
-        add_log(logs, &format!("写入代码到编辑器... (第 {} 次)", attempt));
+        info!(user = true, "写入代码到编辑器... (第 {} 次)", attempt);
         let (ok, method) = try_set_code(tab, code)?;
         if ok {
             Ok((true, method))
@@ -422,12 +382,12 @@ pub fn submit_code(
         }
     })?;
     if set_ok {
-        add_log(logs, &format!("✅ 代码写入成功 (method={})", method));
+        info!(user = true, "✅ 代码写入成功 (method={})", method);
     }
 
     retry(logs, cancel_flag, "点击提交", 3, |attempt| {
         check_cancel(cancel_flag)?;
-        add_log(logs, &format!("点击提交... (第 {} 次)", attempt));
+        info!(user = true, "点击提交... (第 {} 次)", attempt);
         if try_click_submit(tab)? {
             Ok(())
         } else {
@@ -435,28 +395,30 @@ pub fn submit_code(
         }
     })?;
 
-    add_log(logs, "⏳ 等待判题结果...");
+    info!(user = true, "⏳ 等待判题结果...");
     let outcome = wait_for_judge_result(tab, logs, cancel_flag, Duration::from_secs(120))?;
 
     match outcome {
         JudgeOutcome::Accepted => {
-            add_log(logs, "✅ 判题通过/打卡成功");
+            info!(user = true, "✅ 判题通过/打卡成功");
             check_cancel(cancel_flag)?;
-            add_log(logs, "尝试领取积分...");
+            info!(user = true, "尝试领取积分...");
             let claimed = try_claim_points(tab).unwrap_or(false);
             if claimed {
                 std::thread::sleep(Duration::from_secs(2));
-                add_log(logs, "✅ 已触发领取积分");
+                info!(user = true, "✅ 已触发领取积分");
             } else {
-                add_log(logs, "未检测到可领取积分入口（可能已领取或页面结构变化）");
+                info!(user = true, "未检测到可领取积分入口（可能已领取或页面结构变化）");
             }
-            add_log(logs, "✅ 打卡流程执行完毕！");
+            info!(user = true, "✅ 打卡流程执行完毕！");
             Ok(())
         }
         other => {
             let (_, snippet) =
                 read_judge_outcome(tab).unwrap_or((JudgeOutcome::Unknown, String::new()));
-            Err(anyhow::anyhow!("判题未通过: {:?}\n{}", other, snippet))
+            let err_msg = format!("判题未通过: {:?}\n{}", other, snippet);
+            error!(user = true, "{}", err_msg);
+            Err(anyhow::anyhow!(err_msg))
         }
     }
 }

@@ -8,12 +8,12 @@ use super::solution::extract_solution_code;
 use super::submit::submit_code;
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use tracing::info;
 
 // 日志工具
 pub fn add_log(logs: &Arc<Mutex<Vec<String>>>, msg: &str) {
-    let now = chrono::Local::now().format("%H:%M:%S").to_string();
     let mut logs_lock = logs.lock().unwrap();
-    logs_lock.push(format!("[{}] {}", now, msg));
+    logs_lock.push(msg.to_string());
     if logs_lock.len() > 500 {
         let overflow = logs_lock.len() - 500;
         logs_lock.drain(0..overflow);
@@ -36,7 +36,7 @@ pub fn run_daily_flow(
     daily_problem_url_ref: Arc<Mutex<String>>,
 ) -> Result<String> {
     check_cancel(&cancel_flag)?;
-    add_log(&logs, "正在启动浏览器... (Starting browser...)");
+    info!(user = true, "正在启动浏览器... (Starting browser...)");
 
     // 复用或创建浏览器实例
     let browser_inst = {
@@ -53,22 +53,19 @@ pub fn run_daily_flow(
         }
 
         if needs_new {
-            add_log(&logs, "启动新浏览器实例 (Starting new browser instance)");
-            let new_b = browser::launch_browser()?;
+            info!(user = true, "启动新浏览器实例 (Starting new browser instance)");
+            let new_b = super::browser::launch_browser()?;
             *browser_lock = Some(new_b.clone());
             new_b
         } else {
-            add_log(
-                &logs,
-                "复用已有浏览器实例 (Reusing existing browser instance)",
-            );
+            info!(user = true, "复用已有浏览器实例 (Reusing existing browser instance)");
             existing_browser.unwrap()
         }
     };
 
     check_cancel(&cancel_flag)?;
     // 1. 登录流程
-    let active_tab = login::ensure_login(&browser_inst, &logs, &cancel_flag)?;
+    let active_tab = super::login::ensure_login(&browser_inst, &logs, &cancel_flag)?;
 
     check_cancel(&cancel_flag)?;
     // 2. 获取每日一题 URL 及打卡状态
@@ -91,16 +88,13 @@ pub fn run_daily_flow(
     *daily_problem_url_ref.lock().unwrap() = problem_url.clone();
 
     if is_solved {
-        add_log(
-            &logs,
-            "✅ 检测到今日已打卡，流程结束 (Daily problem already solved)",
-        );
+        info!(user = true, "✅ 检测到今日已打卡，流程结束 (Daily problem already solved)");
         return Ok(String::new());
     }
 
     check_cancel(&cancel_flag)?;
     // 3. 提取题解代码
-    let (code, lang) = extract_solution_code(&active_tab, &problem_url, &logs, &cancel_flag)?;
+    let (code, lang) = super::solution::extract_solution_code(&active_tab, &problem_url, &logs, &cancel_flag)?;
 
     check_cancel(&cancel_flag)?;
     // 4. 直接在题解页面右侧编辑器填入代码并提交
@@ -108,8 +102,6 @@ pub fn run_daily_flow(
 
     let mut final_status = format!("今日已打卡 ({})", lang);
     if !consecutive_days.is_empty() {
-        // 如果是刚刚打卡成功，连续天数可能增加了 1，这里只是简单展示，为了严谨可以不显示天数，
-        // 或者简单追加之前获取的天数。这里我们保留天数显示，如果需要精确可再次抓取。
         final_status = format!("今日已打卡 ({}) (连续 {} 天)", lang, consecutive_days);
     }
     *checkin_status_ref.lock().unwrap() = final_status;

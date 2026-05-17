@@ -14,6 +14,23 @@ pub enum ThemeMode {
     Dark,
 }
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SidebarItem {
+    pub name: String,
+    pub route_key: String, // "leetcode", "todo", "fitness"
+    pub visible: bool,
+}
+
+impl SidebarItem {
+    pub fn new(name: &str, route_key: &str, visible: bool) -> Self {
+        Self {
+            name: name.to_string(),
+            route_key: route_key.to_string(),
+            visible,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TodoItem {
     pub id: Uuid,
@@ -230,6 +247,8 @@ pub struct TodoSettings {
     pub font_scale: f32,
     #[serde(default = "default_theme_mode")]
     pub theme_mode: ThemeMode,
+    #[serde(default = "default_sidebar_items")]
+    pub sidebar_items: Vec<SidebarItem>,
     #[serde(default)]
     pub last_sync_time: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -242,6 +261,7 @@ impl Default for TodoSettings {
             automated_section_id: None,
             font_scale: default_font_scale(),
             theme_mode: default_theme_mode(),
+            sidebar_items: default_sidebar_items(),
             last_sync_time: None,
             last_sync_hash: None,
         }
@@ -254,6 +274,14 @@ fn default_font_scale() -> f32 {
 
 fn default_theme_mode() -> ThemeMode {
     ThemeMode::System
+}
+
+fn default_sidebar_items() -> Vec<SidebarItem> {
+    vec![
+        SidebarItem::new("LeetCode 刷题", "leetcode", true),
+        SidebarItem::new("Todo 清单", "todo", true),
+        SidebarItem::new("健身训练", "fitness", true),
+    ]
 }
 
 #[derive(Serialize, Deserialize, Default)]

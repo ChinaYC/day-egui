@@ -25,6 +25,7 @@ pub struct TemplateApp {
     fitness_state: FitnessState,
     #[serde(skip)]
     system_visuals: Option<egui::Visuals>,
+    show_sidebar: bool,
 }
 
 impl Default for TemplateApp {
@@ -35,6 +36,7 @@ impl Default for TemplateApp {
             todo_state: TodoState::default(),
             fitness_state: FitnessState::default(),
             system_visuals: None,
+            show_sidebar: true,
         }
     }
 }
@@ -54,6 +56,18 @@ impl TemplateApp {
         } else {
             Default::default()
         };
+
+        // Initialize Tracing with the logs Arc from leetcode_state
+        #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+        {
+            use std::sync::Once;
+            static INIT_LOGGER: Once = Once::new();
+            let logs = app.leetcode_state.logs.clone();
+            INIT_LOGGER.call_once(|| {
+                crate::leetcode::automation::logger::init_tracing(logs);
+            });
+        }
+
         app.system_visuals = Some(cc.egui_ctx.global_style().visuals.clone());
         app
     }
@@ -124,54 +138,103 @@ impl eframe::App for TemplateApp {
 
         ui.ctx().set_global_style(style);
 
-        // 开启 egui 开发者调试面板（悬浮在右侧独立窗口）
-        #[allow(deprecated)]
-        egui::Window::new("🛠 调试面板 (Debugger)")
-            .default_pos([ui.ctx().screen_rect().width() - 350.0, 20.0])
-            .default_size([300.0, 500.0])
-            .vscroll(true)
-            .open(&mut true)
-            .show(ui.ctx(), |ui| {
-                ui.ctx().clone().inspection_ui(ui);
+        let is_mobile = ui.ctx().viewport_rect().width() < 600.0;
+
+        // 开启 egui 开发者调试面板（仅在非移动端显示，或根据需要开启）
+        // if !is_mobile {
+        //     egui::Window::new("🛠 调试面板 (Debugger)")
+        //         .default_pos([ui.ctx().viewport_rect().width() - 350.0, 20.0])
+        //         .default_size([300.0, 500.0])
+        //         .vscroll(true)
+        //         .open(&mut true)
+        //         .show(ui.ctx(), |ui| {
+        //             ui.ctx().clone().inspection_ui(ui);
+        //         });
+        // }
+
+        // 顶部导航栏 (提供侧边栏切换按钮)
+        egui::Panel::top("top_panel").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("☰").clicked() {
+                    self.show_sidebar = !self.show_sidebar;
+                }
+
+                if is_mobile || !self.show_sidebar {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let title = self
+                            .todo_state
+                            .settings
+                            .sidebar_items
+                            .iter()
+                            .find(|item| match item.route_key.as_str() {
+                                "leetcode" => self.route == AppRoute::LeetCode,
+                                "todo" => self.route == AppRoute::Todo,
+                                "fitness" => self.route == AppRoute::Fitness,
+                                _ => false,
+                            })
+                            .map(|item| item.name.as_str())
+                            .unwrap_or("⚡ 效率工具");
+                        ui.heading(title);
+                    });
+                }
             });
+        });
 
-        egui::Panel::left("left_panel")
-            .resizable(false)
-            .exact_size(200.0)
-            .show_inside(ui, |ui| {
-                ui.heading("⚡ 效率工具");
-                ui.add_space(20.0);
-
-                ui.vertical_centered_justified(|ui| {
-                    if ui
-                        .selectable_label(self.route == AppRoute::LeetCode, "LeetCode 刷题")
-                        .clicked()
-                    {
-                        self.route = AppRoute::LeetCode;
-                    }
-                    ui.add_space(8.0);
-                    if ui
-                        .selectable_label(self.route == AppRoute::Todo, "Todo 清单")
-                        .clicked()
-                    {
-                        self.route = AppRoute::Todo;
-                    }
-                    ui.add_space(8.0);
-                    if ui
-                        .selectable_label(self.route == AppRoute::Fitness, "健身训练")
-                        .clicked()
-                    {
-                        self.route = AppRoute::Fitness;
-                    }
-                });
-
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+        // 侧边栏
+        if self.show_sidebar {
+            egui::Panel::left("left_panel")
+                .resizable(false)
+                .exact_size(if is_mobile {
+                    ui.ctx().viewport_rect().width() * 0.7
+                } else {
+                    200.0
+                })
+                .show_inside(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label("v0.1.0 Offline");
+                        ui.heading("⚡ 效率工具");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("✕").clicked() {
+                                self.show_sidebar = false;
+                            }
+                        });
+                    });
+                    ui.add_space(20.0);
+
+                    ui.vertical_centered_justified(|ui| {
+                        let sidebar_items = self.todo_state.settings.sidebar_items.clone();
+                        for item in sidebar_items {
+                            if !item.visible {
+                                continue;
+                            }
+
+                            let target_route = match item.route_key.as_str() {
+                                "leetcode" => AppRoute::LeetCode,
+                                "todo" => AppRoute::Todo,
+                                "fitness" => AppRoute::Fitness,
+                                _ => continue,
+                            };
+
+                            if ui
+                                .selectable_label(self.route == target_route, &item.name)
+                                .clicked()
+                            {
+                                self.route = target_route;
+                                if is_mobile {
+                                    self.show_sidebar = false;
+                                }
+                            }
+                            ui.add_space(8.0);
+                        }
+                    });
+
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            ui.label("v0.1.0 Offline");
+                        });
                     });
                 });
-            });
+        }
 
         egui::CentralPanel::default().show_inside(ui, |ui| match self.route {
             AppRoute::LeetCode => {

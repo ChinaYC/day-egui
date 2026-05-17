@@ -55,34 +55,43 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
     });
 
     ui.add_space(8.0);
-    egui::ScrollArea::vertical()
-        .id_salt("fitness_profiles_scroll")
-        .show(ui, |ui| {
-            let mut to_delete: Option<uuid::Uuid> = None;
-            for p in &state.profiles {
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(state.selected_profile == Some(p.id), p.name.clone())
-                        .clicked()
-                    {
-                        state.selected_profile = Some(p.id);
-                        state.error_msg = None;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("🗑️").clicked() {
-                            to_delete = Some(p.id);
+    
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        egui::ScrollArea::vertical()
+            .id_salt("fitness_profiles_scroll")
+            .max_height(200.0)
+            .show(ui, |ui| {
+                let mut to_delete: Option<uuid::Uuid> = None;
+                for p in &state.profiles {
+                    ui.horizontal(|ui| {
+                        let is_selected = state.selected_profile == Some(p.id);
+                        let text = if is_selected {
+                            egui::RichText::new(p.name.clone()).strong().color(ui.visuals().strong_text_color())
+                        } else {
+                            egui::RichText::new(p.name.clone())
+                        };
+                        
+                        if ui.selectable_label(is_selected, text).clicked() {
+                            state.selected_profile = Some(p.id);
+                            state.error_msg = None;
                         }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("🗑️").clicked() {
+                                to_delete = Some(p.id);
+                            }
+                        });
                     });
-                });
-            }
-            if let Some(id) = to_delete {
-                state.profiles.retain(|p| p.id != id);
-                if state.selected_profile == Some(id) {
-                    state.selected_profile = state.profiles.first().map(|p| p.id);
                 }
-                *state_changed = true;
-            }
-        });
+                if let Some(id) = to_delete {
+                    state.profiles.retain(|p| p.id != id);
+                    if state.selected_profile == Some(id) {
+                        state.selected_profile = state.profiles.first().map(|p| p.id);
+                    }
+                    *state_changed = true;
+                }
+            });
+    });
 
     ui.add_space(12.0);
     ui.separator();
@@ -204,19 +213,108 @@ fn show_profile_detail(
         ui.label(egui::RichText::new(format!("资料：{}", profile.name)).strong());
         ui.add_space(6.0);
 
-        ui.horizontal(|ui| {
-            ui.label("身高(cm)：");
-            ui.add(egui::DragValue::new(profile.input.height_cm.get_or_insert(0.0)).speed(0.5));
-            ui.add_space(10.0);
-            ui.label("体重(kg)：");
-            ui.add(egui::DragValue::new(profile.input.weight_kg.get_or_insert(0.0)).speed(0.5));
-        });
-
         ui.add_space(6.0);
-        ui.separator();
-        ui.add_space(6.0);
+        egui::Frame::group(ui.style())
+            .inner_margin(12.0)
+            .show(ui, |ui| {
+                egui::Grid::new("fitness_profile_form_grid")
+                    .num_columns(4)
+                    .spacing(egui::vec2(20.0, 10.0))
+                    .show(ui, |ui| {
+                        // 第一行
+                        ui.label("身高 (cm):");
+                        ui.add(egui::DragValue::new(profile.input.height_cm.get_or_insert(0.0)).speed(0.5));
+                        ui.label("体重 (kg):");
+                        ui.add(egui::DragValue::new(profile.input.weight_kg.get_or_insert(0.0)).speed(0.5));
+                        ui.end_row();
 
-        ui.label(egui::RichText::new("健康指标（当前值 vs 参考）").strong());
+                        // 第二行
+                        ui.label("年龄:");
+                        let mut age = profile.input.age.unwrap_or(0) as i32;
+                        if ui.add(egui::DragValue::new(&mut age).speed(1)).changed() {
+                            profile.input.age = Some(age.max(0).min(120) as u8);
+                        }
+                        ui.label("性别:");
+                        let mut sex = profile.input.sex.unwrap_or(Sex::Male);
+                        egui::ComboBox::from_id_salt("fitness_sex")
+                            .selected_text(match sex {
+                                Sex::Male => "男",
+                                Sex::Female => "女",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut sex, Sex::Male, "男");
+                                ui.selectable_value(&mut sex, Sex::Female, "女");
+                            });
+                        profile.input.sex = Some(sex);
+                        ui.end_row();
+
+                        // 第三行
+                        ui.label("体脂率 (%):");
+                        ui.add(egui::DragValue::new(profile.input.body_fat_pct.get_or_insert(0.0)).speed(0.1));
+                        ui.label("内脏脂肪等级:");
+                        ui.add(egui::DragValue::new(profile.input.visceral_fat_level.get_or_insert(0.0)).speed(0.1));
+                        ui.end_row();
+
+                        // 第四行
+                        ui.label("骨骼肌量 (kg):");
+                        ui.add(egui::DragValue::new(profile.input.skeletal_muscle_kg.get_or_insert(0.0)).speed(0.1));
+                        ui.label("健身条件:");
+                        let mut cond = profile
+                            .input
+                            .training_condition
+                            .unwrap_or(TrainingCondition::Equipment);
+                        egui::ComboBox::from_id_salt("fitness_condition")
+                            .selected_text(match cond {
+                                TrainingCondition::Equipment => "器械",
+                                TrainingCondition::Swimming => "游泳",
+                                TrainingCondition::Home => "家庭",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut cond, TrainingCondition::Equipment, "器械");
+                                ui.selectable_value(&mut cond, TrainingCondition::Swimming, "游泳");
+                                ui.selectable_value(&mut cond, TrainingCondition::Home, "家庭");
+                            });
+                        profile.input.training_condition = Some(cond);
+                        ui.end_row();
+
+                        // 第五行
+                        ui.label("训练时间段:");
+                        let s = profile
+                            .input
+                            .training_time_window
+                            .get_or_insert_with(|| "晚间".to_string());
+                        ui.text_edit_singleline(s);
+                        ui.label("每周训练天数目标:");
+                        let mut days = profile.input.weekly_training_days_goal.unwrap_or(3) as i32;
+                        if ui.add(egui::DragValue::new(&mut days).speed(1)).changed() {
+                            profile.input.weekly_training_days_goal = Some(days.max(1).min(7) as u8);
+                        }
+                        ui.end_row();
+                        
+                        // 第六行
+                        ui.label("创建数据时间:");
+                        ui.horizontal(|ui| {
+                            let date_str = profile
+                                .input
+                                .data_date
+                                .get_or_insert_with(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+                            ui.text_edit_singleline(date_str);
+                            if ui.button("今天").clicked() {
+                                *date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+                            }
+                            if ui.button("明天").clicked() {
+                                *date_str = (chrono::Local::now().date_naive() + chrono::Duration::days(1))
+                                    .format("%Y-%m-%d")
+                                    .to_string();
+                            }
+                        });
+                        ui.end_row();
+                    });
+            });
+
+        ui.add_space(16.0);
+        ui.label(egui::RichText::new("健康指标评估").strong().size(16.0));
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("●").color(egui::Color32::from_rgb(46, 204, 113)));
             ui.label(egui::RichText::new("正常").color(egui::Color32::GRAY));
@@ -230,6 +328,7 @@ fn show_profile_detail(
             ui.label(egui::RichText::new("○").color(egui::Color32::GRAY));
             ui.label(egui::RichText::new("未填写").color(egui::Color32::GRAY));
         });
+
         let bmi_v = health::bmi(profile.input.height_cm, profile.input.weight_kg);
         let bmi_i = health::bmi_indicator(bmi_v);
         let bf_i = health::body_fat_indicator(profile.input.sex, profile.input.body_fat_pct);
@@ -237,116 +336,26 @@ fn show_profile_detail(
         let sm_i =
             health::skeletal_muscle_indicator(profile.input.sex, profile.input.skeletal_muscle_kg);
 
-        ui.add_space(4.0);
-        egui::Grid::new("fitness_metrics_grid")
-            .num_columns(3)
-            .spacing(egui::vec2(10.0, 6.0))
+        ui.add_space(8.0);
+        egui::Frame::NONE
+            .fill(ui.visuals().faint_bg_color)
+            .inner_margin(12.0)
+            .corner_radius(8.0)
             .show(ui, |ui| {
-                metric_row(ui, &bmi_i);
-                metric_row(ui, &bf_i);
-                metric_row(ui, &vf_i);
-                metric_row(ui, &sm_i);
+                egui::Grid::new("fitness_metrics_grid")
+                    .num_columns(3)
+                    .spacing(egui::vec2(16.0, 12.0))
+                    .show(ui, |ui| {
+                        metric_row(ui, &bmi_i);
+                        metric_row(ui, &bf_i);
+                        metric_row(ui, &vf_i);
+                        metric_row(ui, &sm_i);
+                    });
             });
 
-        ui.add_space(4.0);
+        ui.add_space(16.0);
         ui.horizontal(|ui| {
-            ui.label("创建数据时间：");
-            let date_str = profile
-                .input
-                .data_date
-                .get_or_insert_with(|| chrono::Local::now().format("%Y-%m-%d").to_string());
-            ui.text_edit_singleline(date_str);
-            ui.add_space(6.0);
-            if ui.button("今天").clicked() {
-                *date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-            }
-            if ui.button("明天").clicked() {
-                *date_str = (chrono::Local::now().date_naive() + chrono::Duration::days(1))
-                    .format("%Y-%m-%d")
-                    .to_string();
-            }
-        });
-
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label("体脂率(%)：");
-            ui.add(egui::DragValue::new(profile.input.body_fat_pct.get_or_insert(0.0)).speed(0.1));
-            ui.add_space(10.0);
-            ui.label("内脏脂肪等级：");
-            ui.add(
-                egui::DragValue::new(profile.input.visceral_fat_level.get_or_insert(0.0))
-                    .speed(0.1),
-            );
-            ui.add_space(10.0);
-            ui.label("骨骼肌量(kg)：");
-            ui.add(
-                egui::DragValue::new(profile.input.skeletal_muscle_kg.get_or_insert(0.0))
-                    .speed(0.1),
-            );
-        });
-
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label("年龄：");
-            let mut age = profile.input.age.unwrap_or(0) as i32;
-            if ui.add(egui::DragValue::new(&mut age).speed(1)).changed() {
-                profile.input.age = Some(age.max(0).min(120) as u8);
-            }
-            ui.add_space(10.0);
-            ui.label("性别：");
-            let mut sex = profile.input.sex.unwrap_or(Sex::Male);
-            egui::ComboBox::from_id_salt("fitness_sex")
-                .selected_text(match sex {
-                    Sex::Male => "男",
-                    Sex::Female => "女",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut sex, Sex::Male, "男");
-                    ui.selectable_value(&mut sex, Sex::Female, "女");
-                });
-            profile.input.sex = Some(sex);
-        });
-
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label("健身条件：");
-            let mut cond = profile
-                .input
-                .training_condition
-                .unwrap_or(TrainingCondition::Equipment);
-            egui::ComboBox::from_id_salt("fitness_condition")
-                .selected_text(match cond {
-                    TrainingCondition::Equipment => "器械",
-                    TrainingCondition::Swimming => "游泳",
-                    TrainingCondition::Home => "家庭",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut cond, TrainingCondition::Equipment, "器械");
-                    ui.selectable_value(&mut cond, TrainingCondition::Swimming, "游泳");
-                    ui.selectable_value(&mut cond, TrainingCondition::Home, "家庭");
-                });
-            profile.input.training_condition = Some(cond);
-            ui.add_space(10.0);
-            ui.label("训练时间段：");
-            let s = profile
-                .input
-                .training_time_window
-                .get_or_insert_with(|| "晚间".to_string());
-            ui.text_edit_singleline(s);
-        });
-
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label("每周训练天数目标：");
-            let mut days = profile.input.weekly_training_days_goal.unwrap_or(3) as i32;
-            if ui.add(egui::DragValue::new(&mut days).speed(1)).changed() {
-                profile.input.weekly_training_days_goal = Some(days.max(1).min(7) as u8);
-            }
-        });
-
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            if ui.button("生成分析与计划").clicked() {
+            if ui.button("⚡ 生成分析与计划").clicked() {
                 match generate_plan(&profile.input) {
                     Ok(plan) => {
                         profile.last_plan = Some(plan);
@@ -358,7 +367,7 @@ fn show_profile_detail(
                 }
             }
 
-            if ui.button("生成并同步到 Todo").clicked() {
+            if ui.button("🔄 生成并同步到 Todo").clicked() {
                 match generate_plan(&profile.input) {
                     Ok(plan) => {
                         sync_plan_to_todo(todo, &profile.name, &plan);
@@ -372,62 +381,90 @@ fn show_profile_detail(
             }
         });
 
-        ui.add_space(10.0);
+        ui.add_space(16.0);
         if let Some(plan) = &profile.last_plan {
             ui.separator();
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new("计划与执行").strong());
-            ui.add_space(6.0);
-
-            ui.horizontal(|ui| {
-                ui.label(format!(
-                    "阶段：{} / 建议训练天数：{}",
-                    phase_text(plan.phase),
-                    plan.recommended_weekly_training_days
-                ));
-                ui.add_space(12.0);
-                ui.label(format!(
-                    "开始日期：{} / 生成时间：{}",
-                    plan.start_date,
-                    plan.generated_at
-                        .with_timezone(&chrono::Local)
-                        .format("%Y-%m-%d %H:%M")
-                ));
-            });
-
-            if let Some(bmi) = plan.bmi {
-                ui.add_space(4.0);
-                ui.label(format!("BMI：{bmi:.1}"));
-            }
-
-            if !plan.metrics.is_empty() {
-                ui.add_space(8.0);
-                ui.label(egui::RichText::new("指标解读").strong());
-                egui::Grid::new("fitness_plan_metrics_grid")
-                    .num_columns(3)
-                    .spacing(egui::vec2(10.0, 6.0))
-                    .show(ui, |ui| {
-                        for m in &plan.metrics {
-                            plan_metric_row(ui, m);
-                        }
-                    });
-            }
-
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new("建议摘要").strong());
-            for line in &plan.health_summary {
-                ui.label(format!("• {line}"));
-            }
-
-            let start = NaiveDate::parse_from_str(&plan.start_date, "%Y-%m-%d")
-                .unwrap_or_else(|_| chrono::Local::now().date_naive());
-            let today = chrono::Local::now().date_naive();
-
-            ui.add_space(10.0);
-            egui::CollapsingHeader::new("训练计划（可勾选完成 / 一键同步到 Todo）")
-                .id_salt("fitness_training_plan")
-                .default_open(true)
+            ui.add_space(16.0);
+            
+            egui::Frame::group(ui.style())
+                .inner_margin(16.0)
                 .show(ui, |ui| {
+                    ui.label(egui::RichText::new("🎯 计划与执行").strong().size(18.0));
+                    ui.add_space(12.0);
+
+                    ui.horizontal(|ui| {
+                        let phase_color = match plan.phase {
+                            FitnessPhase::FatLoss => egui::Color32::from_rgb(231, 76, 60), // Red
+                            FitnessPhase::MuscleGain => egui::Color32::from_rgb(52, 152, 219), // Blue
+                            FitnessPhase::Maintenance => egui::Color32::from_rgb(46, 204, 113), // Green
+                        };
+                        ui.label(egui::RichText::new(format!("阶段：{}", phase_text(plan.phase))).strong().color(phase_color));
+                        ui.label(" | ");
+                        ui.label(format!("建议训练：{}天/周", plan.recommended_weekly_training_days));
+                    });
+                    
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("开始日期：{}", plan.start_date)).color(ui.visuals().text_color().gamma_multiply(0.7)));
+                        ui.label(" | ");
+                        ui.label(egui::RichText::new(format!("生成时间：{}", plan.generated_at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M"))).color(ui.visuals().text_color().gamma_multiply(0.7)));
+                    });
+
+                    if let Some(bmi) = plan.bmi {
+                        ui.add_space(6.0);
+                        ui.label(format!("当前 BMI: {:.1}", bmi));
+                    }
+
+                    if !plan.metrics.is_empty() {
+                        ui.add_space(12.0);
+                        ui.label(egui::RichText::new("📊 指标解读").strong());
+                        ui.add_space(6.0);
+                        egui::Frame::NONE
+                            .fill(ui.visuals().faint_bg_color)
+                            .inner_margin(12.0)
+                            .corner_radius(6.0)
+                            .show(ui, |ui| {
+                                egui::Grid::new("fitness_plan_metrics_grid")
+                                    .num_columns(3)
+                                    .spacing(egui::vec2(16.0, 10.0))
+                                    .show(ui, |ui| {
+                                        for m in &plan.metrics {
+                                            plan_metric_row(ui, m);
+                                        }
+                                    });
+                            });
+                    }
+
+                    ui.add_space(16.0);
+                    ui.label(egui::RichText::new("💡 建议摘要").strong());
+                    ui.add_space(6.0);
+                    for line in &plan.health_summary {
+                        ui.label(format!("• {line}"));
+                    }
+                    
+                    // 饮食建议
+                    ui.add_space(16.0);
+                    ui.label(egui::RichText::new("🥗 饮食建议").strong());
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label(format!("蛋白质: {}g/kg", plan.weekly_diet_suggestions.daily_protein_g_per_kg));
+                        ui.label(format!("脂肪: {}g/kg", plan.weekly_diet_suggestions.daily_fat_g_per_kg));
+                        ui.label(format!("碳水: {}g/kg", plan.weekly_diet_suggestions.daily_carbs_g_per_kg));
+                    });
+                    ui.add_space(4.0);
+                    for line in &plan.weekly_diet_suggestions.structure {
+                        ui.label(format!("• {line}"));
+                    }
+
+                    let start = NaiveDate::parse_from_str(&plan.start_date, "%Y-%m-%d")
+                        .unwrap_or_else(|_| chrono::Local::now().date_naive());
+                    let today = chrono::Local::now().date_naive();
+
+                    ui.add_space(20.0);
+                    egui::CollapsingHeader::new(egui::RichText::new("📅 训练计划 (展开查看)").strong())
+                        .id_salt("fitness_training_plan")
+                        .default_open(true)
+                        .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         if ui.button("同步未完成到 Todo").clicked() {
                             let folder_id = get_or_create_fitness_folder(todo);
@@ -538,39 +575,7 @@ fn show_profile_detail(
                             }
                         });
                 });
-
-            ui.add_space(10.0);
-            egui::CollapsingHeader::new("饮食建议（按体重自动换算）")
-                .id_salt("fitness_diet_plan")
-                .default_open(true)
-                .show(ui, |ui| {
-                    let diet = &plan.weekly_diet_suggestions;
-                    let w = profile.input.weight_kg.unwrap_or(0.0);
-                    ui.horizontal(|ui| {
-                        ui.label(format!(
-                            "蛋白：{:.1} g/kg",
-                            diet.daily_protein_g_per_kg
-                        ));
-                        ui.add_space(10.0);
-                        ui.label(format!("脂肪：{:.1} g/kg", diet.daily_fat_g_per_kg));
-                        ui.add_space(10.0);
-                        ui.label(format!("碳水：{:.1} g/kg", diet.daily_carbs_g_per_kg));
-                    });
-                    if w > 0.0 {
-                        ui.add_space(4.0);
-                        ui.label(format!(
-                            "按体重 {:.1}kg 估算：蛋白 {:.0}g / 脂肪 {:.0}g / 碳水 {:.0}g",
-                            w,
-                            diet.daily_protein_g_per_kg * w,
-                            diet.daily_fat_g_per_kg * w,
-                            diet.daily_carbs_g_per_kg * w
-                        ));
-                    }
-                    ui.add_space(6.0);
-                    for line in &diet.structure {
-                        ui.label(format!("• {line}"));
-                    }
-                });
+            });
         }
     }
 

@@ -1,4 +1,5 @@
 #!/bin/bash
+# 打包执行 bash ./build_mac_app.sh ./dist
 # ./build_mac_app.sh 
 # 1. 编译发布版本
 echo "正在构建 release 二进制..."
@@ -52,8 +53,33 @@ EOF
 # 5. 赋予可执行权限
 $SUDO chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 
-if command -v codesign >/dev/null 2>&1; then
-  codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+# 6. 签名与公证 (可选)
+# 使用环境变量: 
+# APPLE_ID_SIGNING_IDENTITY: "Developer ID Application: Your Name (TEAMID)"
+# NOTARY_PROFILE: "notarytool 存储的 Profile 名称"
+
+ENTITLEMENTS="entitlements.plist"
+
+if [ -n "$APPLE_ID_SIGNING_IDENTITY" ]; then
+    echo "正在使用 $APPLE_ID_SIGNING_IDENTITY 进行签名 (Hardened Runtime)..."
+    codesign --force --options runtime --entitlements "$ENTITLEMENTS" --deep --sign "$APPLE_ID_SIGNING_IDENTITY" "$APP_DIR"
+else
+    echo "未设置 APPLE_ID_SIGNING_IDENTITY, 正在执行 Ad-hoc 签名..."
+    if command -v codesign >/dev/null 2>&1; then
+      codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+    fi
+fi
+
+if [ -n "$NOTARY_PROFILE" ] && [ -n "$APPLE_ID_SIGNING_IDENTITY" ]; then
+    echo "正在提交公证 (Notarization)..."
+    ZIP_FOR_NOTARY="$DEST_DIR/${APP_NAME}_to_notarize.zip"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_FOR_NOTARY"
+    
+    xcrun notarytool submit "$ZIP_FOR_NOTARY" --keychain-profile "$NOTARY_PROFILE" --wait
+    
+    echo "正在将公证票据附加到 App (Stapling)..."
+    xcrun stapler staple "$APP_DIR"
+    rm "$ZIP_FOR_NOTARY"
 fi
 
 if command -v ditto >/dev/null 2>&1; then
@@ -61,6 +87,41 @@ if command -v ditto >/dev/null 2>&1; then
   rm -f "$ZIP_PATH"
   ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
   echo "✅ 已生成 ZIP: $ZIP_PATH"
+fi
+
+# 7. 生成 DMG
+DMG_PATH="$DEST_DIR/${APP_NAME}-macos.dmg"
+rm -f "$DMG_PATH"
+
+if command -v create-dmg >/dev/null 2>&1; then
+    echo "正在使用 create-dmg 生成美化版 DMG: $DMG_PATH"
+    create-dmg \
+      --volname "${APP_NAME} Installer" \
+      --window-pos 200 120 \
+      --window-size 800 400 \
+      --icon-size 100 \
+      --icon "${APP_NAME}.app" 200 190 \
+      --hide-extension "${APP_NAME}.app" \
+      --app-drop-link 600 185 \
+      "$DMG_PATH" \
+      "$APP_DIR"
+else
+    echo "未找到 create-dmg，正在使用 hdiutil 生成标准 DMG: $DMG_PATH"
+    # 创建临时目录
+    TMP_DMG_DIR=$(mktemp -d)
+    cp -R "$APP_DIR" "$TMP_DMG_DIR/"
+    # 创建软链接到 /Applications
+    ln -s /Applications "$TMP_DMG_DIR/Applications"
+    
+    # 生成 DMG
+    hdiutil create -volname "${APP_NAME} Installer" -srcfolder "$TMP_DMG_DIR" -ov -format UDZO "$DMG_PATH"
+    
+    # 清理
+    rm -rf "$TMP_DMG_DIR"
+fi
+
+if [ -f "$DMG_PATH" ]; then
+    echo "✅ 已生成 DMG: $DMG_PATH"
 fi
 
 echo "✅ 已生成 App: $APP_DIR"

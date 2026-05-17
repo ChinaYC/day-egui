@@ -19,7 +19,6 @@ fn android_main(app: android_activity::AndroidApp) {
     unsafe {
         env::set_var("RUST_BACKTRACE", "1");
     }
-    env_logger::init();
 
     let mut options = eframe::NativeOptions::default();
     options.android_app = Some(app);

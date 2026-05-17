@@ -181,16 +181,20 @@ impl LeetCodeState {
         let logs = self.logs.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if !logs.is_empty() {
             ui.add_space(8.0);
-            ui.label("执行日志 (Run Logs):");
-            egui::ScrollArea::vertical()
-                .id_salt("leetcode_logs_scroll")
-                .max_height(100.0)
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    for log in logs {
-                        ui.label(egui::RichText::new(log).color(egui::Color32::LIGHT_BLUE));
+            ui.horizontal(|ui| {
+                ui.label("执行日志 (Run Logs):");
+                #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+                {
+                    if ui.button("📂 打开日志目录 (Open Logs Dir)").clicked() {
+                        if let Some(mut path) = dirs::home_dir() {
+                            path.push(".leetcode_automation");
+                            path.push("logs");
+                            let _ = std::process::Command::new("open").arg(path).spawn();
+                        }
                     }
-                });
+                }
+            });
+            show_logs_view(ui, &logs);
         }
 
         let last_sub = self
@@ -318,4 +322,17 @@ impl LeetCodeState {
             *is_running_clone.lock().unwrap() = false;
         }
     }
+}
+
+/// 封装的日志查看组件
+pub fn show_logs_view(ui: &mut egui::Ui, logs: &[String]) {
+    egui::ScrollArea::vertical()
+        .id_salt("leetcode_logs_scroll")
+        .max_height(100.0)
+        .stick_to_bottom(true)
+        .show(ui, |ui| {
+            for log in logs {
+                ui.label(egui::RichText::new(log).color(egui::Color32::LIGHT_BLUE));
+            }
+        });
 }

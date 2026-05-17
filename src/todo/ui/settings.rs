@@ -63,6 +63,47 @@ pub fn show(state: &mut TodoState, ui: &mut egui::Ui, state_changed: &mut bool) 
             ui.separator();
             ui.add_space(8.0);
 
+            ui.label("菜单配置 (Menu configuration):");
+            ui.vertical(|ui| {
+                let mut move_up = None;
+                let mut move_down = None;
+                let len = state.settings.sidebar_items.len();
+
+                for (i, item) in state.settings.sidebar_items.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut item.visible, "").changed() {
+                            *state_changed = true;
+                        }
+                        ui.label(&item.name);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if i < len - 1 {
+                                if ui.button("↓").clicked() {
+                                    move_down = Some(i);
+                                }
+                            }
+                            if i > 0 {
+                                if ui.button("↑").clicked() {
+                                    move_up = Some(i);
+                                }
+                            }
+                        });
+                    });
+                }
+
+                if let Some(i) = move_up {
+                    state.settings.sidebar_items.swap(i, i - 1);
+                    *state_changed = true;
+                }
+                if let Some(i) = move_down {
+                    state.settings.sidebar_items.swap(i, i + 1);
+                    *state_changed = true;
+                }
+            });
+
+            ui.add_space(12.0);
+            ui.separator();
+            ui.add_space(8.0);
+
             ui.label("自动任务默认分区 (Automated tasks go to):");
             let mut selected = state.settings.automated_section_id;
             egui::ComboBox::from_id_salt("automated_section_select")
