@@ -1,10 +1,8 @@
-use super::{browser, login};
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
 
 // 导入重构后的模块
 use super::get_daily::get_daily_problem_url;
-use super::solution::extract_solution_code;
 use super::submit::submit_code;
 
 use std::sync::atomic::{AtomicBool, Ordering};

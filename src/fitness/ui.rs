@@ -14,6 +14,7 @@ pub fn show(
     todo: &mut TodoState,
     state_changed: &mut bool,
 ) {
+    state.update_error_timeout();
     ui.heading("健身训练 (Fitness)");
     ui.add_space(8.0);
 
@@ -21,11 +22,35 @@ pub fn show(
         state.selected_profile = state.profiles.first().map(|p| p.id);
     }
 
-    ui.columns(2, |cols| {
-        cols[0].set_width(240.0);
-        show_profiles_panel(state, &mut cols[0], state_changed);
-        show_profile_detail(state, &mut cols[1], todo, state_changed);
-    });
+    let available_width = ui.available_width();
+    if available_width > 600.0 {
+        ui.horizontal_top(|ui| {
+            // 左侧面板，固定宽度
+            ui.vertical(|ui| {
+                ui.set_width(300.0);
+                show_profiles_panel(state, ui, state_changed);
+            });
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(8.0);
+
+            // 右侧详情，占用剩余空间
+            ui.vertical(|ui| {
+                show_profile_detail(state, ui, todo, state_changed);
+            });
+        });
+    } else {
+        egui::ScrollArea::vertical()
+            .id_salt("fitness_main_scroll")
+            .show(ui, |ui| {
+                show_profiles_panel(state, ui, state_changed);
+                ui.add_space(16.0);
+                ui.separator();
+                ui.add_space(16.0);
+                show_profile_detail(state, ui, todo, state_changed);
+            });
+    }
 
     if let Some(err) = &state.error_msg {
         ui.add_space(6.0);
@@ -42,14 +67,14 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
         if ui.button("新增").clicked() {
             let name = state.new_profile_name.trim().to_string();
             if name.is_empty() {
-                state.error_msg = Some("姓名不能为空".to_string());
+                state.set_error("姓名不能为空");
                 return;
             }
             let profile = super::model::FitnessProfile::new(name);
             state.selected_profile = Some(profile.id);
             state.profiles.push(profile);
             state.new_profile_name.clear();
-            state.error_msg = None;
+            state.clear_error();
             *state_changed = true;
         }
     });
@@ -58,11 +83,14 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
     
     egui::Frame::group(ui.style()).show(ui, |ui| {
         ui.set_width(ui.available_width());
+        
+        let mut to_delete: Option<uuid::Uuid> = None;
+        let mut to_select: Option<uuid::Uuid> = None;
+        
         egui::ScrollArea::vertical()
             .id_salt("fitness_profiles_scroll")
             .max_height(200.0)
             .show(ui, |ui| {
-                let mut to_delete: Option<uuid::Uuid> = None;
                 for p in &state.profiles {
                     ui.horizontal(|ui| {
                         let is_selected = state.selected_profile == Some(p.id);
@@ -73,8 +101,7 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
                         };
                         
                         if ui.selectable_label(is_selected, text).clicked() {
-                            state.selected_profile = Some(p.id);
-                            state.error_msg = None;
+                            to_select = Some(p.id);
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("🗑️").clicked() {
@@ -83,14 +110,19 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
                         });
                     });
                 }
-                if let Some(id) = to_delete {
-                    state.profiles.retain(|p| p.id != id);
-                    if state.selected_profile == Some(id) {
-                        state.selected_profile = state.profiles.first().map(|p| p.id);
-                    }
-                    *state_changed = true;
-                }
             });
+
+        if let Some(id) = to_select {
+            state.selected_profile = Some(id);
+            state.clear_error();
+        }
+        if let Some(id) = to_delete {
+            state.profiles.retain(|p| p.id != id);
+            if state.selected_profile == Some(id) {
+                state.selected_profile = state.profiles.first().map(|p| p.id);
+            }
+            *state_changed = true;
+        }
     });
 
     ui.add_space(12.0);
@@ -102,45 +134,45 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
         .default_open(false)
         .show(ui, |ui| {
             ui.add_space(6.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("复制模板").clicked() {
                     let template = super::model::FitnessProfileInput::default();
                     if let Ok(s) = serde_json::to_string_pretty(&template) {
                         ui.ctx().copy_text(s);
-                        state.error_msg = None;
+                        state.clear_error();
                     } else {
-                        state.error_msg = Some("模板生成失败".to_string());
+                        state.set_error("模板生成失败");
                     }
                 }
 
                 if ui.button("复制当前资料 JSON").clicked() {
                     let Some(p) = state.selected_profile() else {
-                        state.error_msg = Some("请先选择人员".to_string());
+                        state.set_error("请先选择人员");
                         return;
                     };
                     if let Ok(s) = serde_json::to_string_pretty(&p.input) {
                         ui.ctx().copy_text(s);
-                        state.error_msg = None;
+                        state.clear_error();
                     } else {
-                        state.error_msg = Some("JSON 导出失败".to_string());
+                        state.set_error("JSON 导出失败");
                     }
                 }
 
                 if ui.button("复制当前计划 JSON").clicked() {
                     let Some(p) = state.selected_profile() else {
-                        state.error_msg = Some("请先选择人员".to_string());
+                        state.set_error("请先选择人员");
                         return;
                     };
                     let Some(plan) = &p.last_plan else {
-                        state.error_msg = Some("当前人员还没有生成计划".to_string());
+                        state.set_error("当前人员还没有生成计划");
                         return;
                     };
                     if let Ok(s) = serde_json::to_string_pretty(plan) {
                         ui.ctx().copy_text(s.clone());
                         state.last_export_json = s;
-                        state.error_msg = None;
+                        state.clear_error();
                     } else {
-                        state.error_msg = Some("JSON 导出失败".to_string());
+                        state.set_error("JSON 导出失败");
                     }
                 }
             });
@@ -156,16 +188,16 @@ fn show_profiles_panel(state: &mut FitnessState, ui: &mut egui::Ui, state_change
                     ) {
                         Ok(v) => v,
                         Err(_) => {
-                            state.error_msg = Some("JSON 解析失败，请确认格式正确".to_string());
+                            state.set_error("JSON 解析失败，请确认格式正确");
                             return;
                         }
                     };
                     let Some(p) = state.selected_profile_mut() else {
-                        state.error_msg = Some("请先选择人员".to_string());
+                        state.set_error("请先选择人员");
                         return;
                     };
                     p.input = input;
-                    state.error_msg = None;
+                    state.clear_error();
                     *state_changed = true;
                 }
                 if ui.button("清空").clicked() {
@@ -181,21 +213,24 @@ fn show_profile_detail(
     todo: &mut TodoState,
     state_changed: &mut bool,
 ) {
-    ui.horizontal(|ui| {
-        ui.label("人员：");
-        let selected_name = state
-            .selected_profile()
-            .map(|p| p.name.as_str())
-            .unwrap_or("未选择");
-        egui::ComboBox::from_id_salt("fitness_profile_select")
-            .selected_text(selected_name)
-            .show_ui(ui, |ui| {
-                for p in &state.profiles {
-                    ui.selectable_value(&mut state.selected_profile, Some(p.id), p.name.clone());
-                }
-            });
-    });
-    ui.add_space(8.0);
+    let is_desktop = ui.available_width() > 400.0;
+    if !is_desktop {
+        ui.horizontal(|ui| {
+            ui.label("人员：");
+            let selected_name = state
+                .selected_profile()
+                .map(|p| p.name.as_str())
+                .unwrap_or("未选择");
+            egui::ComboBox::from_id_salt("fitness_profile_select")
+                .selected_text(selected_name)
+                .show_ui(ui, |ui| {
+                    for p in &state.profiles {
+                        ui.selectable_value(&mut state.selected_profile, Some(p.id), p.name.clone());
+                    }
+                });
+        });
+        ui.add_space(8.0);
+    }
 
     let Some(profile_id) = state.selected_profile else {
         ui.label("请选择左侧人员后开始填写。");
@@ -205,7 +240,9 @@ fn show_profile_detail(
         ui.label("请选择左侧人员后开始填写。");
         return;
     };
-    let mut error: Option<String> = None;
+
+    let mut next_error = None;
+    let mut should_clear_error = false;
 
     {
         let profile = &mut state.profiles[profile_index];
@@ -213,28 +250,38 @@ fn show_profile_detail(
         ui.label(egui::RichText::new(format!("资料：{}", profile.name)).strong());
         ui.add_space(6.0);
 
-        ui.add_space(6.0);
         egui::Frame::group(ui.style())
             .inner_margin(12.0)
             .show(ui, |ui| {
+                ui.set_max_width(650.0); // 限制表单最大宽度，防止桌面端拉得太长
+                let available_width = ui.available_width();
+                let num_columns = if available_width < 450.0 { 2 } else { 4 };
                 egui::Grid::new("fitness_profile_form_grid")
-                    .num_columns(4)
-                    .spacing(egui::vec2(20.0, 10.0))
+                    .num_columns(num_columns)
+                    .spacing(egui::vec2(12.0, 10.0))
                     .show(ui, |ui| {
+                        let label = |ui: &mut egui::Ui, text: &str| {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(text);
+                            });
+                        };
+
                         // 第一行
-                        ui.label("身高 (cm):");
+                        label(ui, "身高 (cm):");
                         ui.add(egui::DragValue::new(profile.input.height_cm.get_or_insert(0.0)).speed(0.5));
-                        ui.label("体重 (kg):");
+                        if num_columns == 2 { ui.end_row(); }
+                        label(ui, "体重 (kg):");
                         ui.add(egui::DragValue::new(profile.input.weight_kg.get_or_insert(0.0)).speed(0.5));
                         ui.end_row();
 
                         // 第二行
-                        ui.label("年龄:");
+                        label(ui, "年龄:");
                         let mut age = profile.input.age.unwrap_or(0) as i32;
                         if ui.add(egui::DragValue::new(&mut age).speed(1)).changed() {
                             profile.input.age = Some(age.max(0).min(120) as u8);
                         }
-                        ui.label("性别:");
+                        if num_columns == 2 { ui.end_row(); }
+                        label(ui, "性别:");
                         let mut sex = profile.input.sex.unwrap_or(Sex::Male);
                         egui::ComboBox::from_id_salt("fitness_sex")
                             .selected_text(match sex {
@@ -249,16 +296,18 @@ fn show_profile_detail(
                         ui.end_row();
 
                         // 第三行
-                        ui.label("体脂率 (%):");
+                        label(ui, "体脂率 (%):");
                         ui.add(egui::DragValue::new(profile.input.body_fat_pct.get_or_insert(0.0)).speed(0.1));
-                        ui.label("内脏脂肪等级:");
+                        if num_columns == 2 { ui.end_row(); }
+                        label(ui, "内脏脂肪等级:");
                         ui.add(egui::DragValue::new(profile.input.visceral_fat_level.get_or_insert(0.0)).speed(0.1));
                         ui.end_row();
 
                         // 第四行
-                        ui.label("骨骼肌量 (kg):");
+                        label(ui, "骨骼肌量 (kg):");
                         ui.add(egui::DragValue::new(profile.input.skeletal_muscle_kg.get_or_insert(0.0)).speed(0.1));
-                        ui.label("健身条件:");
+                        if num_columns == 2 { ui.end_row(); }
+                        label(ui, "健身条件:");
                         let mut cond = profile
                             .input
                             .training_condition
@@ -278,13 +327,14 @@ fn show_profile_detail(
                         ui.end_row();
 
                         // 第五行
-                        ui.label("训练时间段:");
+                        label(ui, "训练时间段:");
                         let s = profile
                             .input
                             .training_time_window
                             .get_or_insert_with(|| "晚间".to_string());
                         ui.text_edit_singleline(s);
-                        ui.label("每周训练天数目标:");
+                        if num_columns == 2 { ui.end_row(); }
+                        label(ui, "每周训练天数目标:");
                         let mut days = profile.input.weekly_training_days_goal.unwrap_or(3) as i32;
                         if ui.add(egui::DragValue::new(&mut days).speed(1)).changed() {
                             profile.input.weekly_training_days_goal = Some(days.max(1).min(7) as u8);
@@ -292,7 +342,7 @@ fn show_profile_detail(
                         ui.end_row();
                         
                         // 第六行
-                        ui.label("创建数据时间:");
+                        label(ui, "创建数据时间:");
                         ui.horizontal(|ui| {
                             let date_str = profile
                                 .input
@@ -359,10 +409,11 @@ fn show_profile_detail(
                 match generate_plan(&profile.input) {
                     Ok(plan) => {
                         profile.last_plan = Some(plan);
+                        should_clear_error = true;
                         *state_changed = true;
                     }
                     Err(e) => {
-                        error = Some(e);
+                        next_error = Some(e);
                     }
                 }
             }
@@ -372,10 +423,11 @@ fn show_profile_detail(
                     Ok(plan) => {
                         sync_plan_to_todo(todo, &profile.name, &plan);
                         profile.last_plan = Some(plan);
+                        should_clear_error = true;
                         *state_changed = true;
                     }
                     Err(e) => {
-                        error = Some(e);
+                        next_error = Some(e);
                     }
                 }
             }
@@ -534,7 +586,7 @@ fn show_profile_detail(
                                     ui.horizontal(|ui| {
                                         if ui.button("复制训练").clicked() {
                                             ui.ctx().copy_text(day.workout.join("\n"));
-                                            state.error_msg = None;
+                                            should_clear_error = true;
                                         }
 
                                         if !day.title.contains("休息")
@@ -579,7 +631,12 @@ fn show_profile_detail(
         }
     }
 
-    state.error_msg = error;
+    if should_clear_error {
+        state.clear_error();
+    }
+    if let Some(e) = next_error {
+        state.set_error(e);
+    }
 }
 
 fn metric_row(ui: &mut egui::Ui, ind: &health::MetricIndicator) {
